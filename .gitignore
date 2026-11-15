@@ -1,0 +1,9 @@
+build/
+.gradle/
+.externalNativeBuild/
+.cxx/
+*.so
+*.a
+*.o
+*.apk
+*.aab
