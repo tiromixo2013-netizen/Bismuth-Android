@@ -35,3 +35,15 @@ Use Android NDK + CMake and set `-DBISMUTH_ENABLE_GLES31=ON`. The calling applic
 - No FPS or latency improvement is claimed until on-device A/B profiling is complete.
 
 See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work.
+
+## Native shared-library API (bootstrap)
+
+The Android build now exports a small C ABI from `libbismuth.so`: `bismuth_create`,
+`bismuth_initialize`, `bismuth_upload`, `bismuth_dispatch`, buffer-handle getters,
+and `bismuth_destroy`. Create and call the instance only on a thread with the owning
+GLES 3.1 context current. The caller supplies conservative candidate bounds in the
+renderer submission order. The visible-index and indirect-command buffer handles are
+for integration code to consume; this library does not yet issue Geometry Dash draw calls.
+
+This API makes the culling backend callable from native integration code, but it is
+still not a Geometry Dash hook or installable mod package.
