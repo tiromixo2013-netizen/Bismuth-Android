@@ -23,6 +23,7 @@ A real integration must:
 - Candidate upload currently uploads the full array with glBufferSubData.
 - The output command is a generic six-vertex instanced command; the game renderer must be explicitly adapted before it can be consumed.
 - GLES shader compilation and behavior must be verified on actual Android GPU drivers.
+- Non-finite or inverted candidate bounds are rejected by both the CPU reference and GPU classify shader; callers should still provide conservative, normalized world-space bounds.
 - The host reference test does not validate GPU synchronization or visual correctness.
 
 ### Texture-atlas draw compatibility check
