@@ -41,8 +41,7 @@ extern "C" int bismuth_initialize(void* handle, char* error, std::uint32_t error
 extern "C" int bismuth_is_initialized(void* handle) {
     if (!handle) return 0;
     const auto* instance = static_cast<const BismuthInstance*>(handle);
-    return instance->culler.visibleIndexBuffer() != 0u &&
-           instance->culler.indirectCommandBuffer() != 0u ? 1 : 0;
+    return instance->culler.isInitialized() ? 1 : 0;
 }
 extern "C" int bismuth_upload(void* handle, const BismuthCandidate* candidates,
                                std::uint32_t count) {
