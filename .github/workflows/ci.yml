@@ -30,5 +30,12 @@ jobs:
           -DANDROID_PLATFORM=android-26
           -DBISMUTH_ENABLE_GLES31=ON
           -DBISMUTH_BUILD_TESTS=OFF
-      - name: Build Android ARM64 static libraries
+      - name: Build Android ARM64 shared mod library
         run: cmake --build build-android --parallel
+      - name: Upload Android ARM64 library
+        uses: actions/upload-artifact@v4
+        with:
+          name: bismuth-android-arm64
+          path: build-android/libbismuth.so
+          if-no-files-found: error
+          retention-days: 14
