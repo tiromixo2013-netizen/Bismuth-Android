@@ -36,5 +36,5 @@ int main() {
     assert((validOnly.visibleIndices == std::vector<std::uint32_t>{2}));
     auto invalidView = cullStable(candidates, Rect{nan, 0, 100, 100});
     assert(invalidView.visibleIndices.empty());
-    std::cout << "Bismuth-Android reference tests passed\\n";
+    std::cout << "Bismuth-Android reference tests passed\n";
 }
