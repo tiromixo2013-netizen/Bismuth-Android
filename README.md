@@ -52,7 +52,7 @@ still not a Geometry Dash hook or installable mod package.
 ## Android C integration header
 
 Native consumers can include `bismuth/android_api.h` without depending on C++ headers.
-`BismuthCandidate` is a fixed 32-byte C struct matching the compute shader's std430 record.
+`BismuthCandidate` is a fixed 32-byte C struct matching the compute shader's std430 record. `BISMUTH_MAX_CANDIDATES` exposes the current 16,384-record per-dispatch ceiling; oversized C uploads are rejected before temporary allocation.
 The capability bits describe what was compiled into the library; they do not mean that a
 GLES context exists or that the culler has initialized. Call `bismuth_initialize` only
 on the render thread while the intended GLES 3.1 context is current, then check
