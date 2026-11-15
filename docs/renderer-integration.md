@@ -329,3 +329,19 @@ The current dirty mechanism is atlas-wide (one observed dirty byte), and the dra
 ### Next investigation
 
 Trace callers of `drawNumberOfQuads()` / `drawQuads()`, the atlas creation and index-buffer initialization path, and all writes to the atlas dirty byte and dirty-range counter. This is now the highest-value static-analysis task before writing a hook or adapter.
+
+
+### Caller trace: atlas draw ranges in the uploaded target
+
+A full `.text` disassembly of the same uploaded library was searched for direct branches/calls to the atlas draw symbols. The observed call sites are:
+
+- `CCSpriteBatchNode::draw()` (`0x00b17034`) branches to `CCTextureAtlas::drawQuads()` (`0x00b33c40`). The wrapper loads the 32-bit quad count from atlas offset `+0x4c`, sets `start = 0`, and tail-branches to `drawNumberOfQuads(start, count)`.
+- `CCParticleBatchNode::draw()` (`0x00b01eb8`) also branches to `drawQuads()`, so it shares the full-prefix atlas draw behavior, but it is a separate renderer path with its own particle update/population rules.
+- `CCAtlasNode::draw()` (`0xaca0c4`) directly calls `drawNumberOfQuads(count, 0)` with its node-owned count loaded from object offset `+0x18c`; it uses the atlas object at `+0x178`. This is a distinct atlas consumer and must not be treated as a CCSpriteBatchNode.
+- The one other direct `drawNumberOfQuads()` symbol entry is the one-argument wrapper, which sets `start = 0` and forwards the supplied count.
+
+For the normal `CCSpriteBatchNode` path, the draw range is therefore the contiguous prefix `[0, atlas.quadCount)`. If the dirty flag is set, `drawNumberOfQuads(0, quadCount)` uploads that entire prefix (`quadCount * 96` bytes) before drawing. This removes the earlier uncertainty about dirty data outside a partial requested range for this specific path. It does **not** establish that all other atlas consumers have the same lifecycle or that a visibility-compacted range can be substituted safely.
+
+### Updated adapter implication
+
+The CCSpriteBatchNode path draws the atlas's entire contiguous quad prefix in atlas order. A GPU visibility adapter would need to preserve that order while selecting quads; it cannot simply shorten the draw count because invisible quads may be interspersed with visible ones. A separate generated element-index stream remains a plausible experiment, but only after proving the quad-to-vertex/index pattern and how atlas reordering/insert/remove operations update slots. ParticleBatchNode and CCAtlasNode need separate compatibility decisions and should initially remain on the original path.
