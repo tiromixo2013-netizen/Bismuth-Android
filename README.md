@@ -69,3 +69,17 @@ See [docs/android-loader.md](docs/android-loader.md) for the ARM64 APK loading p
 and the limitations of the current bootstrap. The helper script validates and copies
 `libbismuth.so` and patches the Geometry Dash Smali library-load call; it does not rebuild
 or sign the APK and it does not activate renderer hooks.
+
+## Inspect the exact target game library
+
+Before attempting renderer hooks, inspect the `libcocos2dcpp.so` extracted from
+the user's exact Geometry Dash 2.2081 ARM64 APK:
+
+```bash
+python3 tools/inspect_target_elf.py /path/to/libcocos2dcpp.so
+```
+
+The tool validates ELF64 little-endian AArch64 shared-library format and lists exported
+dynamic symbols whose names mention the Cocos2d node, sprite, batch-node, or texture-atlas
+classes. A stripped library may not expose these names. Reported values are ELF symbol
+values, not runtime hook addresses, and do not establish that a function is safe to hook.
