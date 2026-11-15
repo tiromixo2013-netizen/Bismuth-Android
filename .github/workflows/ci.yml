@@ -7,6 +7,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install GLSL validator
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+      - name: Validate GLES compute shaders
+        run: |
+          for shader in shaders/*.comp; do glslangValidator -S comp "$shader"; done
       - name: Configure host tests
         run: cmake -S . -B build -DBISMUTH_BUILD_TESTS=ON
       - name: Build host reference
