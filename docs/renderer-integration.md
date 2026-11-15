@@ -25,6 +25,21 @@ A real integration must:
 - GLES shader compilation and behavior must be verified on actual Android GPU drivers.
 - The host reference test does not validate GPU synchronization or visual correctness.
 
+### Texture-atlas draw compatibility check
+
+The public Cocos2d source used for reconnaissance shows that the atlas draw is indexed:
+its quad index pattern is six `GLushort` indices per quad, and `drawNumberOfQuads`
+binds the atlas texture/VAO before calling `glDrawElements(GL_TRIANGLES, ...)`.
+GLES 3.1 does provide `glDrawElementsIndirect`, but its command is a five-word
+indexed-draw structure, not the current four-word `glDrawArraysIndirect` structure.
+
+A future atlas adapter therefore cannot simply pass the current command buffer to the
+engine draw call. It needs a separate, correctly sized indexed command and a GPU-built
+element-index buffer (or an equally validated vertex-shader remapping design), plus a
+compatible VAO that references the game's atlas vertex buffer without corrupting the
+engine's VAO state. The atlas vertex layout, VBO/VAO ownership, and the exact game's
+draw configuration must be verified from the 2.2081 ARM64 binary before implementation.
+
 ## GLES backend ownership and lifecycle
 
 - Create and make current a GLES 3.1 context before initialize().
