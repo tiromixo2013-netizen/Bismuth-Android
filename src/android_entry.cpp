@@ -47,6 +47,8 @@ extern "C" int bismuth_is_initialized(void* handle) {
 extern "C" int bismuth_upload(void* handle, const BismuthCandidate* candidates,
                                std::uint32_t count) {
     if (!handle || (count && !candidates)) return -1;
+    // Reject oversized input before allocating/copying user-provided records.
+    if (count > BISMUTH_MAX_CANDIDATES) return -2;
     std::vector<bismuth::Candidate> input;
     if (count) {
         input.resize(count);
