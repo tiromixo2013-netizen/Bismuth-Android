@@ -12,6 +12,8 @@ extern "C" {
 #endif
 
 /* Compile-time capabilities of this shared library. */
+#define BISMUTH_MAX_CANDIDATES 16384u
+
 enum BismuthCapability {
     BISMUTH_CAP_NATIVE_LIBRARY = 1u << 0,
     BISMUTH_CAP_GLES31_COMPUTE = 1u << 1
