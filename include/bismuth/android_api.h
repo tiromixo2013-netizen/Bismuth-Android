@@ -26,7 +26,7 @@ typedef struct BismuthCandidate {
     float bottom;
     float right;
     float top;
-    uint32_t payload;
+    uint32_t payload; /* Opaque caller data; current culler does not interpret it. */
     uint32_t pad0;
     uint32_t pad1;
     uint32_t pad2;
@@ -39,7 +39,10 @@ BISMUTH_API int bismuth_initialize(void* handle, char* error, uint32_t error_cap
 BISMUTH_API int bismuth_is_initialized(void* handle);
 BISMUTH_API int bismuth_upload(void* handle, const BismuthCandidate* candidates, uint32_t count);
 BISMUTH_API int bismuth_dispatch(void* handle, float left, float bottom, float right, float top, uint32_t count);
+/* SSBO of uint32 candidate indices in stable input order; consume after dispatch/barrier. */
 BISMUTH_API uint32_t bismuth_visible_index_buffer(void* handle);
+/* Four-word DrawArraysIndirect command (6 vertices, visible candidate count).
+ * This is NOT a Cocos2d indexed-atlas draw command. */
 BISMUTH_API uint32_t bismuth_indirect_command_buffer(void* handle);
 /* Destroy while the GLES context that created this instance is current. */
 BISMUTH_API void bismuth_destroy(void* handle);
