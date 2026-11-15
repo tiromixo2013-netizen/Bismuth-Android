@@ -31,7 +31,7 @@ def inspect(path: Path) -> list[tuple[str, int, int]]:
         raise ElfError("file is too small to contain an ELF64 header")
     header = ELF_HEADER.unpack_from(data)
     ident = header[0]
-    if ident[:4] != b"\\x7fELF":
+    if ident[:4] != b"\x7fELF":
         raise ElfError("not an ELF file")
     if ident[4] != 2 or ident[5] != 1:
         raise ElfError("expected ELF64 little-endian")
@@ -73,7 +73,7 @@ def inspect(path: Path) -> list[tuple[str, int, int]]:
             name_off, _info, _other, shndx, value, size = SYMBOL.unpack_from(data, pos)
             if not name_off or name_off >= len(strings) or shndx == 0:
                 continue
-            end = strings.find(b"\\0", name_off)
+            end = strings.find(b"\0", name_off)
             if end < 0:
                 continue
             name = strings[name_off:end].decode("utf-8", "replace")
@@ -98,7 +98,7 @@ def main() -> int:
     print("VALUE              SIZE               SYMBOL")
     for name, value, size in symbols:
         print(f"0x{value:016x} 0x{size:016x} {name}")
-    print("\\nNOTE: values are ELF symbol values, not verified runtime hook addresses.")
+    print("\nNOTE: values are ELF symbol values, not verified runtime hook addresses.")
     return 0
 
 
