@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(BismuthAndroid VERSION 0.1.0 LANGUAGES CXX)
+project(BismuthAndroid VERSION 0.1.0 LANGUAGES C CXX)
 option(BISMUTH_BUILD_TESTS "Build host-side reference tests" ON)
 option(BISMUTH_ENABLE_GLES31 "Build the Android OpenGL ES 3.1 backend" OFF)
 
@@ -31,4 +31,9 @@ if(BISMUTH_BUILD_TESTS)
   add_executable(bismuth_reference_tests tests/culling_reference_tests.cpp)
   target_link_libraries(bismuth_reference_tests PRIVATE bismuth_core)
   add_test(NAME culling_reference_tests COMMAND bismuth_reference_tests)
+
+  # Keep the public Android API header valid for plain C consumers too.
+  add_executable(bismuth_android_api_c_test tests/android_api_header_c_test.c)
+  target_include_directories(bismuth_android_api_c_test PRIVATE include)
+  add_test(NAME android_api_header_c_test COMMAND bismuth_android_api_c_test)
 endif()
