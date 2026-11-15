@@ -36,7 +36,7 @@ jobs:
         run: |
           file build-android/libbismuth.so
           readelf -h build-android/libbismuth.so | grep -E 'Class:|Machine:'
-          llvm-nm -D --defined-only build-android/libbismuth.so | tee exported-symbols.txt
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D --defined-only build-android/libbismuth.so | tee exported-symbols.txt
           grep -q 'bismuth_android_build_id' exported-symbols.txt
           grep -q 'bismuth_android_capabilities' exported-symbols.txt
           grep -q 'bismuth_initialize' exported-symbols.txt
