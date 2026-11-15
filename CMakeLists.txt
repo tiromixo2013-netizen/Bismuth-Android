@@ -21,6 +21,7 @@ if(ANDROID AND BISMUTH_ENABLE_GLES31)
   # no game renderer hook is installed until verified 2.2081 call sites exist.
   add_library(bismuth_mod SHARED src/android_entry.cpp)
   target_compile_features(bismuth_mod PRIVATE cxx_std_17)
+  target_compile_definitions(bismuth_mod PRIVATE BISMUTH_ANDROID_GLES31=1)
   target_link_libraries(bismuth_mod PRIVATE bismuth_gles31 bismuth_core log)
   set_target_properties(bismuth_mod PROPERTIES OUTPUT_NAME "bismuth")
 endif()
