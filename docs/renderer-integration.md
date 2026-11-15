@@ -266,3 +266,45 @@ runtime opt-in and fall back per unsupported sprite.
 No game hook, object-field write, skipped virtual call, or renderer replacement
 has been added by this analysis. The prototype remains separate from the game's
 live renderer.
+### Exact `CCTextureAtlas::updateQuad()` behavior
+
+Disassembly of the target function at `0x00b332ac` confirms the atlas update
+contract used by `CCSprite::updateTransform()`:
+
+- The atlas stores its quad-data pointer at object offset `+0x60`.
+- The destination byte offset is `index * 96` (the code computes
+  `(index << 7) - (index << 5)`). The function copies exactly 96 bytes from
+  the supplied quad into that slot.
+- It updates the 32-bit value at atlas offset `+0x4c` to the maximum of its
+  prior value and `index + 1`.
+- It sets the byte at atlas offset `+0x48` to `1`, marking atlas data dirty.
+
+This establishes that a transform update can overwrite a full 96-byte quad
+slot and mark the atlas dirty for a later GPU-buffer upload. It does not yet
+prove the complete meaning of the two atlas counters/flags; names such as
+`dirtyMaxIndex` and `dirty` remain working labels, not verified source fields.
+
+### Consequence for a future visibility path
+
+An optimization must not simply compact visible sprite quads into a new draw
+list and assume the existing atlas VBO/EBO will follow. The existing engine
+updates a fixed atlas slot by sprite atlas index, marks atlas data dirty, and
+later uploads that dirty range before drawing. A compatible adapter must
+preserve the mapping between sprite, atlas index, 96-byte quad slot, texture,
+blend state, and painter order. If it introduces a separate compacted index
+stream, it must also prove that the index stream references the correct four
+vertices per original quad and that all required GL state is restored.
+
+### Current blocker list (revalidated)
+
+1. Map all sprite and parent setters that invalidate transform/quad state.
+2. Identify subclasses overriding the virtual update-transform slot and
+   determine which can be supported without bypassing custom behavior.
+3. Trace atlas dirty-range upload and buffer/index setup end-to-end.
+4. Design an observation-only hook that records calls and dirty ranges while
+   leaving original functions and draw order untouched.
+5. Only then prototype a gated fast path and compare rendered output, alpha,
+   clipping, blend modes, and frame-time on the target phone.
+
+Until those steps are complete, no transform call is skipped and no atlas
+draw command is replaced.
