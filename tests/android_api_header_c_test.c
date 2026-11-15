@@ -1,6 +1,7 @@
 #include "bismuth/android_api.h"
 
 int main(void) {
+    if (BISMUTH_MAX_CANDIDATES != 16384u) return 1;
     BismuthCandidate candidate = {0};
     candidate.left = -1.0f;
     candidate.right = 1.0f;
