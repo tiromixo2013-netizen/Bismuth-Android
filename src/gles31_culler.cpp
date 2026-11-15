@@ -1,7 +1,7 @@
 #include "bismuth/gles31_culler.hpp"
 #include <cmath>
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
-#include "embedded_shaders.hpp"
+#include <embedded_shaders.hpp>
 namespace bismuth {
 namespace {
 constexpr std::uint32_t kWorkgroupSize = 128u;
