@@ -9,10 +9,10 @@ GLuint compileCompute(const char* source, std::string* error) {
     GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
     glShaderSource(shader, 1, &source, nullptr); glCompileShader(shader);
     GLint ok = GL_FALSE; glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok) { GLint n=0; glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &n); std::string log(n>0?static_cast<size_t>(n):1,'\\0'); glGetShaderInfoLog(shader,n,nullptr,log.data()); if(error)*error=log; glDeleteShader(shader); return 0; }
+    if (!ok) { GLint n=0; glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &n); std::string log(n>0?static_cast<size_t>(n):1,'\0'); glGetShaderInfoLog(shader,n,nullptr,log.data()); if(error)*error=log; glDeleteShader(shader); return 0; }
     GLuint program=glCreateProgram(); glAttachShader(program,shader); glLinkProgram(program); glDeleteShader(shader);
     glGetProgramiv(program,GL_LINK_STATUS,&ok);
-    if(!ok){GLint n=0;glGetProgramiv(program,GL_INFO_LOG_LENGTH,&n);std::string log(n>0?static_cast<size_t>(n):1,'\\0');glGetProgramInfoLog(program,n,nullptr,log.data());if(error)*error=log;glDeleteProgram(program);return 0;}
+    if(!ok){GLint n=0;glGetProgramiv(program,GL_INFO_LOG_LENGTH,&n);std::string log(n>0?static_cast<size_t>(n):1,'\0');glGetProgramInfoLog(program,n,nullptr,log.data());if(error)*error=log;glDeleteProgram(program);return 0;}
     return program;
 }
 void bufferData(GLuint id, GLsizeiptr bytes) { glBindBuffer(GL_SHADER_STORAGE_BUFFER,id); glBufferData(GL_SHADER_STORAGE_BUFFER,bytes,nullptr,GL_DYNAMIC_DRAW); }
