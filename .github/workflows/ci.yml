@@ -38,12 +38,18 @@ jobs:
         run: |
           file build-android/libbismuth.so
           readelf -h build-android/libbismuth.so | grep -E 'Class:|Machine:'
+          readelf -h build-android/libbismuth.so | grep -q 'Class:.*ELF64'
+          readelf -h build-android/libbismuth.so | grep -q 'Machine:.*AArch64'
           "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D --defined-only build-android/libbismuth.so | tee exported-symbols.txt
           grep -q 'bismuth_android_build_id' exported-symbols.txt
           grep -q 'bismuth_android_capabilities' exported-symbols.txt
+          grep -q 'bismuth_create' exported-symbols.txt
           grep -q 'bismuth_initialize' exported-symbols.txt
+          grep -q 'bismuth_is_initialized' exported-symbols.txt
           grep -q 'bismuth_upload' exported-symbols.txt
           grep -q 'bismuth_dispatch' exported-symbols.txt
+          grep -q 'bismuth_visible_index_buffer' exported-symbols.txt
+          grep -q 'bismuth_indirect_command_buffer' exported-symbols.txt
           grep -q 'bismuth_destroy' exported-symbols.txt
       - name: Upload Android ARM64 library
         uses: actions/upload-artifact@v4
