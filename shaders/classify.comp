@@ -17,7 +17,8 @@ void main() {
     uint visible = 0u;
     if (i < uCount) {
         vec4 b = items[i].bounds;
-        visible = uint(b.z >= uView.x && b.x <= uView.z && b.w >= uView.y && b.y <= uView.w);
+        bool valid = all(not(isnan(b))) && all(not(isinf(b))) && b.x <= b.z && b.y <= b.w;
+        visible = uint(valid && b.z >= uView.x && b.x <= uView.z && b.w >= uView.y && b.y <= uView.w);
         flags[i] = visible;
     }
     scan[lane] = visible;
