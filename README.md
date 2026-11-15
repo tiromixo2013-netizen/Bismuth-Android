@@ -60,3 +60,11 @@ on the render thread while the intended GLES 3.1 context is current, then check
 
 The CI suite compiles this header as C as well as C++, so ABI declarations remain usable
 from a future Android loader or JNI bridge.
+
+
+## Android APK loader helper
+
+See [docs/android-loader.md](docs/android-loader.md) for the ARM64 APK loading preparation
+and the limitations of the current bootstrap. The helper script validates and copies
+`libbismuth.so` and patches the Geometry Dash Smali library-load call; it does not rebuild
+or sign the APK and it does not activate renderer hooks.
