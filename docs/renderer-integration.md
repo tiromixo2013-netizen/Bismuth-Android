@@ -308,3 +308,24 @@ vertices per original quad and that all required GL state is restored.
 
 Until those steps are complete, no transform call is skipped and no atlas
 draw command is replaced.
+
+### Dirty-range upload and indexed draw: complete target path
+
+Further disassembly of `CCTextureAtlas::drawNumberOfQuads(start, count)` (target address `0x00b33af0`) resolves the dirty flag behavior:
+
+- `count == 0` returns immediately without issuing a draw.
+- The atlas binds its vertex buffer (`this + 0x40`) to `GL_ARRAY_BUFFER` and tests the dirty byte at `this + 0x48`.
+- When dirty, it uploads `count * 96` bytes from the CPU quad array at `this + 0x60 + start * 96` using `glBufferSubData`, then clears the dirty byte at `this + 0x48`.
+- It configures three vertex attributes with 24-byte stride: position (3 floats, offset 0), color (4 normalized unsigned bytes, offset 12), and texture coordinates (2 floats, offset 16).
+- It binds the element buffer (`this + 0x44`) and calls `glDrawElements(GL_TRIANGLES, count * 6, GL_UNSIGNED_SHORT, start * 12)`.
+- It then unbinds both array and element buffers. This function contains no explicit VAO bind in the inspected code path.
+
+The byte arithmetic is consistent with four 24-byte vertices per quad: 96 bytes per quad and six 16-bit indices per quad. The draw path uploads the requested contiguous quad range only when the atlas dirty flag is set.
+
+### Important implication
+
+The current dirty mechanism is atlas-wide (one observed dirty byte), and the draw call's upload range is the exact `(start, count)` requested by its caller. Before changing it, we must trace every caller and determine whether dirty updates outside a requested range can remain pending or whether the engine always draws the relevant full range. A new GPU-generated visibility list cannot safely change `start/count` until this interaction is understood. Preserving the original contiguous index order is also essential for alpha blending and painter order.
+
+### Next investigation
+
+Trace callers of `drawNumberOfQuads()` / `drawQuads()`, the atlas creation and index-buffer initialization path, and all writes to the atlas dirty byte and dirty-range counter. This is now the highest-value static-analysis task before writing a hook or adapter.
