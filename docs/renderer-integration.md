@@ -19,7 +19,21 @@ A real integration must:
 
 - One compute dispatch supports at most 16,384 candidates (128 groups of 128).
 - Group prefix scan is a single workgroup; larger scenes need a hierarchical scan.
-- Candidate upload currently uploads the full array with `glBufferSubData`.
+- Candidate upload currently uploads the full array with glBufferSubData.
 - The output command is a generic six-vertex instanced command; the game renderer must be explicitly adapted before it can be consumed.
 - GLES shader compilation and behavior must be verified on actual Android GPU drivers.
 - The host reference test does not validate GPU synchronization or visual correctness.
+
+## GLES backend ownership and lifecycle
+
+- Create and make current a GLES 3.1 context before initialize().
+- Call uploadCandidates() before dispatch; the count passed to dispatch() must equal the latest successful upload count.
+- A zero-count dispatch explicitly writes an indirect command with zero instances, preventing a stale previous frame's instance count from being reused.
+- All methods that issue GL commands, including reset() and destruction, require the owning context to be current on the calling thread.
+- Call reset() before destroying or losing the GL context. After context loss, discard the old object state and initialize a fresh backend after a new context is current.
+- The backend checks the compute workgroup, SSBO binding, SSBO block-size, and dispatch-count limits it relies on. This does not guarantee shader correctness on every vendor driver.
+- The backend is a static library component; an Android app or mod loader still needs to provide lifecycle integration and package/load it.
+
+## Next Android validation
+
+Build the ARM64 backend with the Android NDK CMake toolchain. The CI build checks compilation/linking only; shader execution still requires a real GLES 3.1 context on target hardware.
