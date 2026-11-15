@@ -37,3 +37,31 @@ A real integration must:
 ## Next Android validation
 
 Build the ARM64 backend with the Android NDK CMake toolchain. The CI build checks compilation/linking only; shader execution still requires a real GLES 3.1 context on target hardware.
+
+
+## Public 2.2081 ARM64 symbol reconnaissance (candidate hooks only)
+
+A public Android native-mod template explicitly targets Geometry Dash 2.2081 ARM64 and
+includes an `Addr.txt` dynamic-symbol listing. Its listed Cocos2d symbols provide useful
+candidate investigation points (values below are ELF symbol values from that listing):
+
+| Symbol | Listed value | Why inspect it |
+|---|---:|---|
+| `cocos2d::CCNode::visit()` | `0x00acce40` | Scene traversal boundary; likely too high-level for safe batching. |
+| `cocos2d::CCSprite::draw()` | `0x00b15700` | Per-sprite submission path; hooking alone would not remove CPU traversal. |
+| `cocos2d::CCSpriteBatchNode::visit()` | `0x00b1711c` | Batch-node traversal boundary. |
+| `cocos2d::CCSpriteBatchNode::draw()` | `0x00b17034` | Candidate batch submission boundary. |
+| `cocos2d::CCTextureAtlas::drawNumberOfQuads(unsigned int,unsigned int)` | `0x00b33af0` | Candidate atlas draw boundary where quad count/order and VBO ownership must be understood. |
+
+Reference: [ItzZyann/gd-native-mod-android](https://github.com/ItzZyann/gd-native-mod-android)
+(the repository README states its target is GD 2.2081 Android arm64-v8a; its `Addr.txt`
+contains the symbol table).
+
+**These are research leads, not approved hook offsets.** The address values must be checked
+against the exact target `libcocos2dcpp.so` build and its ELF load layout before use.
+A symbol being present does not establish that the function is safe to replace. In particular,
+the existing Culler output is not compatible with Cocos2d's texture-atlas VBO/index layout.
+The next implementation task is to inspect the batch/atlas data structures and draw state,
+then design a state-preserving backend for a single compatible material batch. Do not hook
+`CCSprite::draw()` as a supposed CPU-overhead fix: that would still leave the engine's
+per-sprite traversal and call overhead in place.
