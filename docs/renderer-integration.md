@@ -150,10 +150,12 @@ from public Cocos2d source:
   `this + 0x148`. It reads the child count at array-object offset `+0x38`, the
   pointer to child entries at `+0x10`, then iterates 8-byte child pointers.
 - For each non-null child, it loads the child's vtable and calls the function pointer
-  at vtable byte offset `0x308`. The return value of the initial virtual call at
-  vtable offset `0x50` gates the draw path. The exact C++ method names represented
-  by these slots are not proven by this disassembly alone; do not label them as
-  transform/update methods without matching vtable/type evidence.
+  at vtable byte offset `0x308`. In the target's exported `CCSprite` vtable, that slot
+  relocates to `cocos2d::CCSprite::updateTransform()` at ELF value `0x00b161d0`.
+  This confirms a per-child CPU transform update for ordinary CCSprite objects.
+  Subclasses may override the virtual slot, so a runtime adapter must account for
+  dynamic child types. The initial virtual call at vtable offset `0x50` gates the
+  draw path; its semantic identity is not yet established.
 - After the child loop, it applies the batch node's blend function and branches to
   `CCTextureAtlas::drawQuads()`.
 - In `CCTextureAtlas::drawNumberOfQuads(start, count)`, the normal non-dirty path
@@ -177,8 +179,23 @@ from public Cocos2d source:
 The target binary confirms the atlas uses a 24-byte interleaved vertex record and
 16-bit indexed quads, but this still does not prove a stable mapping from candidate
 sprite IDs to atlas quad slots across sorting, atlas updates, or child transform work.
-The child loop is an explicit CPU-side per-child virtual-call loop. The virtual call's
-semantic identity is unresolved, so the next safe investigation is to identify its
-vtable slot targets and the data dependencies of the atlas update path before writing
-a hook. Do not bypass this loop or synthesize replacement indices until those facts
+The child loop is an explicit CPU-side per-child virtual-call loop, and the default
+CCSprite vtable proves that the slot calls `CCSprite::updateTransform()`. The next safe
+investigation is to determine which child subclasses occur in live batches and whether
+atlas quad slots remain stable after transform updates, sorting, and dirty-buffer uploads. Do not bypass this loop or synthesize replacement indices until those facts
 are established.
+
+### Vtable resolution: per-child transform update confirmed
+
+The `CCSprite` vtable symbol is at ELF value `0x001218510`; its address point is
+`0x001218520`. The relocation at vtable slot `+0x308` (address
+`0x001218828`) resolves to `0x00b161d0`, the exported
+`cocos2d::CCSprite::updateTransform()` symbol. This resolves the indirect call
+inside `CCSpriteBatchNode::draw()` for ordinary CCSprite objects. The function itself
+contains further transform/visibility-related state checks and transform work.
+
+This confirms that the batch draw path invokes `updateTransform()` once per child
+before issuing the atlas draw for the base CCSprite vtable. It does not prove that
+skipping this call is safe: the method may update vertex positions, dirty flags,
+visibility state, or subclass-specific behavior. A replacement must preserve those
+effects or prove that cached atlas data is already valid for the frame.
