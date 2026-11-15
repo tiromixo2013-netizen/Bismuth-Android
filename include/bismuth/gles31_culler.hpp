@@ -16,6 +16,12 @@ public:
     // candidateCount must match the most recently uploaded candidate count.
     // A zero count writes an indirect command with instanceCount=0.
     bool dispatch(const Rect& view, std::uint32_t candidateCount, std::string* error = nullptr);
+    bool isInitialized() const noexcept {
+        return classifyProgram_ != 0 && offsetsProgram_ != 0 && scatterProgram_ != 0 &&
+               candidates_ != 0 && flags_ != 0 && localOffsets_ != 0 &&
+               groupSums_ != 0 && groupOffsets_ != 0 && visibleIndices_ != 0 &&
+               indirectCommand_ != 0;
+    }
     GLuint visibleIndexBuffer() const noexcept { return visibleIndices_; }
     GLuint indirectCommandBuffer() const noexcept { return indirectCommand_; }
     std::uint32_t capacity() const noexcept { return capacity_; }
