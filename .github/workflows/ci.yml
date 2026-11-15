@@ -13,6 +13,8 @@ jobs:
         run: cmake --build build --parallel
       - name: Run host tests
         run: ctest --test-dir build --output-on-failure
+      - name: Test Android APK injection helper
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
 
   android-arm64:
     runs-on: ubuntu-latest
