@@ -47,3 +47,16 @@ for integration code to consume; this library does not yet issue Geometry Dash d
 
 This API makes the culling backend callable from native integration code, but it is
 still not a Geometry Dash hook or installable mod package.
+
+
+## Android C integration header
+
+Native consumers can include `bismuth/android_api.h` without depending on C++ headers.
+`BismuthCandidate` is a fixed 32-byte C struct matching the compute shader's std430 record.
+The capability bits describe what was compiled into the library; they do not mean that a
+GLES context exists or that the culler has initialized. Call `bismuth_initialize` only
+on the render thread while the intended GLES 3.1 context is current, then check
+`bismuth_is_initialized`. The owning context must also be current when destroying an instance.
+
+The CI suite compiles this header as C as well as C++, so ABI declarations remain usable
+from a future Android loader or JNI bridge.
