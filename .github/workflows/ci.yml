@@ -34,6 +34,8 @@ jobs:
           -DBISMUTH_BUILD_TESTS=OFF
       - name: Build Android ARM64 shared library
         run: cmake --build build-android --parallel
+      - name: Verify embedded shader matches source validation logic
+        run: grep -Fq 'bool valid = all(not(isnan(b)))' build-android/generated/embedded_shaders.hpp
       - name: Verify ARM64 ELF and exported C API
         run: |
           file build-android/libbismuth.so
