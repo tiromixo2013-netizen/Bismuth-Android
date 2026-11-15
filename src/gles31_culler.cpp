@@ -38,6 +38,28 @@ GLuint compileCompute(const char* source, std::string* error) {
     }
     return program;
 }
+class ScopedComputeState {
+public:
+    ScopedComputeState() {
+        glGetIntegerv(GL_CURRENT_PROGRAM, &program_);
+        glGetIntegerv(GL_SHADER_STORAGE_BUFFER_BINDING, &genericStorage_);
+        for (GLuint i = 0; i < 4; ++i)
+            glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, i, &indexedStorage_[i]);
+    }
+    ~ScopedComputeState() {
+        for (GLuint i = 0; i < 4; ++i)
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, static_cast<GLuint>(indexedStorage_[i]));
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, static_cast<GLuint>(genericStorage_));
+        glUseProgram(static_cast<GLuint>(program_));
+    }
+    ScopedComputeState(const ScopedComputeState&) = delete;
+    ScopedComputeState& operator=(const ScopedComputeState&) = delete;
+private:
+    GLint program_ = 0;
+    GLint genericStorage_ = 0;
+    GLint indexedStorage_[4] = {0, 0, 0, 0};
+};
+
 void bufferData(GLuint id, GLsizeiptr bytes) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, id);
     glBufferData(GL_SHADER_STORAGE_BUFFER, bytes, nullptr, GL_DYNAMIC_DRAW);
@@ -75,6 +97,9 @@ bool Gles31Culler::initialize(std::string* error) {
         if (error) *error = "OpenGL ES 3.1 is required";
         return false;
     }
+    // The culler shares the game's context. Preserve the current program and
+    // SSBO bindings so initialization does not leak GL state into the renderer.
+    ScopedComputeState state;
     glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS, &maxBindings);
     glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &maxInvocations);
     glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &maxWorkgroupSizeX);
@@ -136,6 +161,11 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
 }
 
 bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, std::string* error) {
+    if (!classifyProgram_ || !candidates_ || !indirectCommand_) {
+        if (error) *error = "Culler is not initialized";
+        return false;
+    }
+    ScopedComputeState state;
     if (candidates.size() > kMaxCandidates) {
         if (error) *error = "Candidate upload exceeds the 16384 candidate prototype limit";
         uploadedCount_ = 0; return false;
@@ -157,8 +187,12 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
 }
 
 bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* error) {
+    if (!indirectCommand_) {
+        if (error) *error = "Culler is not initialized";
+        return false;
+    }
+    ScopedComputeState state;
     if (count == 0) {
-        if (!indirectCommand_) { if (error) *error = "Culler is not initialized"; return false; }
         const GLuint emptyCommand[4] = {6u, 0u, 0u, 0u};
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirectCommand_);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(emptyCommand), emptyCommand);
