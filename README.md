@@ -11,6 +11,7 @@ The project explores a GPU-assisted path for classifying sprite bounds, compacti
 - Portable CPU reference culler with stable input ordering.
 - Optional Android GLES 3.1 compute backend.
 - Three compute stages: classify + per-workgroup scan, group offsets, stable scatter.
+- Embedded GPU shaders are generated directly from `shaders/*.comp` during CMake configuration.
 - No CPU readback or `glFinish` in the compute dispatch path.
 - Host-side unit tests and GitHub Actions CI.
 
