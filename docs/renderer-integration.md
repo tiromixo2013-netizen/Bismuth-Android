@@ -199,3 +199,26 @@ before issuing the atlas draw for the base CCSprite vtable. It does not prove th
 skipping this call is safe: the method may update vertex positions, dirty flags,
 visibility state, or subclass-specific behavior. A replacement must preserve those
 effects or prove that cached atlas data is already valid for the frame.
+### Transform-to-atlas dependency found in CCSprite::updateTransform
+
+Further disassembly of `CCSprite::updateTransform()` shows why bypassing the child loop
+is unsafe. The routine checks per-sprite state, obtains a transform through a virtual
+call, composes affine transforms, writes transformed quad-related fields in the sprite
+object, and in the dirty/update path calls
+`CCTextureAtlas::updateQuad(cocos2d::_ccV3F_C4B_T2F_Quad*, unsigned int)` at ELF
+value `0x00b332ac`. The call is prepared with a quad pointer at `this + 0x1cc`,
+an atlas pointer loaded from `this + 0x160`, and an atlas index loaded from
+`this + 0x168`.
+
+This establishes a concrete dependency chain:
+
+`CCSpriteBatchNode::draw()` -> per-child virtual `CCSprite::updateTransform()` ->
+transform/quad data update -> `CCTextureAtlas::updateQuad()` when the relevant
+sprite state requires it -> indexed atlas draw.
+
+Therefore, a safe optimization cannot simply skip `updateTransform()` for every
+child. A viable direction to investigate is a conservative static/unchanged-sprite
+fast path that reuses already-valid atlas quad data, while retaining the original
+update path for dirty, animated, transformed, subclassed, or otherwise unsupported
+sprites. The dirty-state semantics and invalidation triggers must be proven before
+implementing such a fast path. This is not implemented yet.
