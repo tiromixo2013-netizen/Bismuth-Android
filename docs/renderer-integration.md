@@ -17,7 +17,8 @@ A real integration must:
 
 ## Current prototype limitations
 
-- One compute dispatch supports at most 16,384 candidates (128 groups of 128).
+- One compute dispatch supports at most 16,384 candidates (128 groups of 128). The public C API exposes this as `BISMUTH_MAX_CANDIDATES` and rejects oversized uploads before allocating a temporary copy.
+- Dispatch rejects non-finite or inverted view rectangles; zero-area rectangles are permitted.
 - Group prefix scan is a single workgroup; larger scenes need a hierarchical scan.
 - Candidate upload currently uploads the full array with glBufferSubData.
 - The output command is a generic six-vertex instanced command; the game renderer must be explicitly adapted before it can be consumed.
