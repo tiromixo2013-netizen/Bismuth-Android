@@ -106,3 +106,34 @@ The next implementation task is to inspect the batch/atlas data structures and d
 then design a state-preserving backend for a single compatible material batch. Do not hook
 `CCSprite::draw()` as a supposed CPU-overhead fix: that would still leave the engine's
 per-sprite traversal and call overhead in place.
+
+
+## Exact uploaded ARM64 library inspection (2026-11-16)
+
+An uploaded `libcocos2dcpp.so` was inspected directly. ELF metadata:
+
+- ELF64, little-endian, `ET_DYN`, `EM_AARCH64`; 19,077,352 bytes.
+- GNU Build ID: `ca621323d54c1d94f5f13a2778ce9c8baa31b9a8`.
+- The file is marked stripped, but its dynamic symbol table still exposes the Cocos2d functions below.
+- SHA-256: `0926fc6ea6802128f057008b7840708c46765acb8df57d1968c966e41d72089d`.
+
+The following dynamic symbols were found in this exact file. Their ELF values match the candidate values from the public 2.2081 symbol listing above:
+
+| Symbol | ELF value | Size |
+|---|---:|---:|
+| `cocos2d::CCNode::visit()` | `0x00acce40` | 348 |
+| `cocos2d::CCSprite::draw()` | `0x00b15700` | 284 |
+| `cocos2d::CCSpriteBatchNode::visit()` | `0x00b1711c` | 172 |
+| `cocos2d::CCSpriteBatchNode::draw()` | `0x00b17034` | 232 |
+| `cocos2d::CCTextureAtlas::drawNumberOfQuads(unsigned int,unsigned int)` | `0x00b33af0` | 336 |
+| `cocos2d::CCTextureAtlas::drawQuads()` | `0x00b33c40` | 12 |
+
+Disassembly observations from this uploaded binary:
+
+- `CCSpriteBatchNode::draw()` performs a loop over child pointers and makes one indirect virtual call per child before setting the blend function and branching to `CCTextureAtlas::drawQuads()`. This confirms a per-child CPU operation in the batch draw path. The exact semantic name of that virtual slot still needs vtable/type-layout confirmation; do not assume its identity solely from this loop.
+- `CCTextureAtlas::drawNumberOfQuads()` binds the atlas array buffer, configures vertex attributes, binds the element buffer, and calls `glDrawElements` with `GL_TRIANGLES` and `GL_UNSIGNED_SHORT`. The visible non-dirty path configures a 24-byte quad-vertex stride with position (3 floats at offset 0), color (4 unsigned bytes at offset 12), and texture coordinates (2 floats at offset 16). A dirty-data path updates the array buffer with `glBufferSubData` before drawing.
+- `CCTextureAtlas::drawQuads()` is a short wrapper that branches to the two-argument draw routine.
+
+This is materially stronger than the earlier public-source-only reconnaissance: the relevant symbols and their values are present in the actual uploaded binary, and the atlas draw behavior above comes from its disassembly. However, the ELF alone does **not** prove the installed game's marketing/version number is 2.2081; the user-provided APK archive name included `2.2.144`, so the APK/package version must be independently checked before labelling this binary an exact 2.2081 build. Matching offsets are strong corroboration, not a substitute for that version check.
+
+These symbol values are ELF virtual addresses, not absolute process addresses. Runtime addresses require the module's actual load bias. They are investigation points only; no hook has been installed or validated. The current culler still cannot replace this indexed atlas draw path, and no GPU-side visibility integration is implemented yet.
