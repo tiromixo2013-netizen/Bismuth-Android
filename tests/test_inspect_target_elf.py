@@ -14,7 +14,7 @@ def make_elf(machine=183):
     header_struct = MODULE.ELF_HEADER
     section_struct = MODULE.SECTION_HEADER
     symbol_struct = MODULE.SYMBOL
-    strings = b"\\0_ZN7cocos2d14CCTextureAtlas19drawNumberOfQuadsEjj\\0"
+    strings = b"\0_ZN7cocos2d14CCTextureAtlas19drawNumberOfQuadsEjj\0"
     symbol_name_offset = 1
     symbols = symbol_struct.pack(0, 0, 0, 0, 0, 0)
     symbols += symbol_struct.pack(symbol_name_offset, 0x12, 0, 1, 0x00B33AF0, 64)
@@ -26,7 +26,7 @@ def make_elf(machine=183):
                                     len(symbols), 2, 0, 8, symbol_struct.size)
     sections += section_struct.pack(0, MODULE.SHT_STRTAB, 0, 0, stroff,
                                     len(strings), 0, 0, 1, 0)
-    ident = b"\\x7fELF" + bytes([2, 1, 1]) + bytes(9)
+    ident = b"\x7fELF" + bytes([2, 1, 1]) + bytes(9)
     header = header_struct.pack(ident, MODULE.ET_DYN, machine, 1, 0, 0,
                                 shoff, 0, header_struct.size, 0, 0,
                                 section_struct.size, 3, 0)
