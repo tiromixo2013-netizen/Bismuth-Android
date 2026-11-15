@@ -50,9 +50,12 @@ void Gles31Culler::reset() noexcept {
     // GLES object deletion is context-dependent. The owner must call reset()
     // while the context that created these objects is current.
     const GLuint programs[] = {classifyProgram_, offsetsProgram_, scatterProgram_};
-    glDeleteProgram(programs[0]); glDeleteProgram(programs[1]); glDeleteProgram(programs[2]);
+    if (programs[0] || programs[1] || programs[2])
+        glDeleteProgram(programs[0]), glDeleteProgram(programs[1]), glDeleteProgram(programs[2]);
     const GLuint buffers[] = {candidates_, flags_, localOffsets_, groupSums_, groupOffsets_, visibleIndices_, indirectCommand_};
-    glDeleteBuffers(7, buffers);
+    bool hasBuffer = false;
+    for (GLuint buffer : buffers) hasBuffer = hasBuffer || buffer != 0;
+    if (hasBuffer) glDeleteBuffers(7, buffers);
     classifyProgram_ = offsetsProgram_ = scatterProgram_ = 0;
     candidates_ = flags_ = localOffsets_ = groupSums_ = 0;
     groupOffsets_ = visibleIndices_ = indirectCommand_ = 0;
@@ -96,6 +99,13 @@ bool Gles31Culler::initialize(std::string* error) {
     if (glGetError() != GL_NO_ERROR || !candidates_ || !flags_ || !localOffsets_ ||
         !groupSums_ || !groupOffsets_ || !visibleIndices_ || !indirectCommand_) {
         if (error) *error = "Failed to create GLES storage buffers";
+        reset(); return false;
+    }
+    // Allocate the indirect command immediately so an empty-scene dispatch is valid
+    // even before the first non-empty candidate upload.
+    bufferData(indirectCommand_, 4 * sizeof(GLuint));
+    if (glGetError() != GL_NO_ERROR) {
+        if (error) *error = "Failed to allocate the indirect command buffer";
         reset(); return false;
     }
     return true;
