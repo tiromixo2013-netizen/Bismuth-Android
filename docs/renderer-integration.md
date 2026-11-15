@@ -222,3 +222,47 @@ fast path that reuses already-valid atlas quad data, while retaining the origina
 update path for dirty, animated, transformed, subclassed, or otherwise unsupported
 sprites. The dirty-state semantics and invalidation triggers must be proven before
 implementing such a fast path. This is not implemented yet.
+### Detailed updateTransform control flow (target disassembly)
+
+Additional instruction-level inspection of the full 1,072-byte
+`CCSprite::updateTransform()` body refines the earlier call-chain finding:
+
+- It begins with a virtual call through the object's vtable at byte offset
+  `0x498`. If that call returns false, it bypasses the main sprite transform
+  branch and calls `CCNode::updateTransform()`.
+- The main branch reads sprite state at offsets including `0x11e`, `0x17b`,
+  `0x22f`, and `0x1b8`, and obtains parent-related transform state through
+  the pointer at `this + 0xd8`. It may call another virtual function at
+  vtable byte offset `0x310`, then composes affine transforms.
+- It writes multiple derived transform/quad-related fields in the sprite
+  object, including regions around offsets `0x17c`, `0x1cc`, `0x1e4`,
+  `0x1fc`, and `0x214`.
+- The call to `CCTextureAtlas::updateQuad()` is conditional, not unconditional.
+  In the observed base-class path, the code checks the byte at `this + 0x22f`;
+  when it is zero and the atlas pointer at `this + 0x160` is non-null, it
+  passes the quad at `this + 0x1cc` and atlas index at `this + 0x168` to
+  `updateQuad()`.
+- The routine clears a byte at `this + 0x179` before returning through
+  `CCNode::updateTransform()` in the main path.
+
+These are object offsets and branch observations, not yet named C++ fields.
+Their semantics must be mapped using constructors, setters, related methods,
+and runtime observations before any code reads or writes them.
+
+### Safe optimization decision
+
+The disassembly does not justify skipping `updateTransform()` merely because a
+sprite appears visually stationary. The routine has virtual dispatch, parent
+transform dependencies, multiple state flags, affine composition, and a
+conditional atlas write. The safe next step is to map every invalidation source
+that can change the derived quad: position/rotation/scale/anchor/content-size,
+parent transform, texture/rect/flip/vertex-color/opacity changes, visibility,
+animation, and subclass overrides. Only after that map is validated can an
+unchanged-sprite cache be designed. The first implementation should be
+observation-only (count calls, dirty transitions, and atlas writes) with the
+original engine path left intact; a later fast path can be gated behind a
+runtime opt-in and fall back per unsupported sprite.
+
+No game hook, object-field write, skipped virtual call, or renderer replacement
+has been added by this analysis. The prototype remains separate from the game's
+live renderer.
