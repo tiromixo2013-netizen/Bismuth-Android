@@ -30,7 +30,9 @@ A real integration must:
 
 The public Cocos2d source used for reconnaissance shows that the atlas draw is indexed:
 its quad index pattern is six `GLushort` indices per quad, and `drawNumberOfQuads`
-binds the atlas texture/VAO before calling `glDrawElements(GL_TRIANGLES, ...)`.
+binds the atlas texture and the atlas array/element buffers before calling
+`glDrawElements(GL_TRIANGLES, ...)`. The exact uploaded target binary is inspected below;
+its draw routine does not show an explicit `glBindVertexArray` call.
 GLES 3.1 does provide `glDrawElementsIndirect`, but its command is a five-word
 indexed-draw structure, not the current four-word `glDrawArraysIndirect` structure.
 
@@ -137,3 +139,46 @@ Disassembly observations from this uploaded binary:
 This is materially stronger than the earlier public-source-only reconnaissance: the relevant symbols and their values are present in the actual uploaded binary, and the atlas draw behavior above comes from its disassembly. However, the ELF alone does **not** prove the installed game's marketing/version number is 2.2081; the user-provided APK archive name included `2.2.144`, so the APK/package version must be independently checked before labelling this binary an exact 2.2081 build. Matching offsets are strong corroboration, not a substitute for that version check.
 
 These symbol values are ELF virtual addresses, not absolute process addresses. Runtime addresses require the module's actual load bias. They are investigation points only; no hook has been installed or validated. The current culler still cannot replace this indexed atlas draw path, and no GPU-side visibility integration is implemented yet.
+
+
+## Exact draw-path details confirmed from uploaded target disassembly
+
+The following details are from AArch64 disassembly of the uploaded library, not inferred
+from public Cocos2d source:
+
+- `CCSpriteBatchNode::draw()` loads a child-pointer array through the object at
+  `this + 0x148`. It reads the child count at array-object offset `+0x38`, the
+  pointer to child entries at `+0x10`, then iterates 8-byte child pointers.
+- For each non-null child, it loads the child's vtable and calls the function pointer
+  at vtable byte offset `0x308`. The return value of the initial virtual call at
+  vtable offset `0x50` gates the draw path. The exact C++ method names represented
+  by these slots are not proven by this disassembly alone; do not label them as
+  transform/update methods without matching vtable/type evidence.
+- After the child loop, it applies the batch node's blend function and branches to
+  `CCTextureAtlas::drawQuads()`.
+- In `CCTextureAtlas::drawNumberOfQuads(start, count)`, the normal non-dirty path
+  binds the texture, binds the atlas VBO to `GL_ARRAY_BUFFER`, and configures:
+  position = 3 x `GL_FLOAT`, offset 0;
+  color = 4 x `GL_UNSIGNED_BYTE`, normalized, offset 12;
+  texture coordinates = 2 x `GL_FLOAT`, offset 16;
+  stride = 24 bytes for all three attributes.
+- It binds the atlas element buffer to `GL_ELEMENT_ARRAY_BUFFER` and calls
+  `glDrawElements(GL_TRIANGLES, count * 6, GL_UNSIGNED_SHORT,
+  start * 6 * sizeof(GLushort))`. It then unbinds both array and element buffers.
+- When the atlas data is dirty, the function first calls `glBufferSubData` to
+  update the requested vertex range, clears the dirty flag, then follows the same
+  attribute/indexed-draw path.
+- No explicit `glBindVertexArray` appears in this function's disassembly. The
+  adapter must therefore not assume the public-source VAO behavior; it must inspect
+  the actual GLES context/version path and preserve the game's attribute/buffer state.
+
+### Updated integration consequence
+
+The target binary confirms the atlas uses a 24-byte interleaved vertex record and
+16-bit indexed quads, but this still does not prove a stable mapping from candidate
+sprite IDs to atlas quad slots across sorting, atlas updates, or child transform work.
+The child loop is an explicit CPU-side per-child virtual-call loop. The virtual call's
+semantic identity is unresolved, so the next safe investigation is to identify its
+vtable slot targets and the data dependencies of the atlas update path before writing
+a hook. Do not bypass this loop or synthesize replacement indices until those facts
+are established.
