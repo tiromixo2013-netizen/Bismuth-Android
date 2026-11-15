@@ -1,0 +1,23 @@
+#version 310 es
+precision highp int;
+layout(local_size_x = 128) in;
+layout(std430, binding = 0) readonly buffer GroupSums { uint groupSums[]; };
+layout(std430, binding = 1) writeonly buffer GroupOffsets { uint groupOffsets[]; };
+layout(std430, binding = 2) buffer IndirectCommand { uint vertexCount; uint instanceCount; uint firstVertex; uint baseInstance; };
+uniform uint uGroupCount;
+shared uint scan[128];
+void main() {
+    uint lane = gl_LocalInvocationID.x;
+    uint value = lane < uGroupCount ? groupSums[lane] : 0u;
+    scan[lane] = value;
+    barrier();
+    for (uint step = 1u; step < 128u; step <<= 1u) {
+        uint add = lane >= step ? scan[lane - step] : 0u;
+        barrier();
+        scan[lane] += add;
+        barrier();
+    }
+    if (lane < uGroupCount) groupOffsets[lane] = scan[lane] - value;
+    if (lane == 127u) instanceCount = scan[lane];
+    if (lane == 0u) { vertexCount = 6u; firstVertex = 0u; baseInstance = 0u; }
+}
