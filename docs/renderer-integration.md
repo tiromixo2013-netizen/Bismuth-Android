@@ -40,6 +40,30 @@ A real integration must:
 Build the ARM64 backend with the Android NDK CMake toolchain. The CI build checks compilation/linking only; shader execution still requires a real GLES 3.1 context on target hardware.
 
 
+## Important Cocos2d batching finding
+
+The public OpenGD 1.71 Cocos2d source is useful architectural evidence, but it is not
+proof of the exact Geometry Dash 2.2081 binary implementation. In that source,
+`CCSpriteBatchNode::draw()` calls `updateTransform()` for its children and then calls
+`CCTextureAtlas::drawQuads()`; its visit path also sorts children before draw. The
+batch node is already designed to submit compatible same-texture sprites as one draw
+call. Therefore, replacing only the final atlas draw with a GPU culler would not
+eliminate the per-child CPU transform/update work. A real CPU-overhead reduction must
+also avoid or reduce that per-sprite CPU update path, or prove that another GD 2.2081
+renderer path dominates the cost.
+
+The next adapter investigation is consequently split into two separate questions:
+
+1. Can conservative visibility be determined from already-available atlas/world data
+   without adding another per-sprite CPU traversal?
+2. Can the atlas quad stream be consumed by a GPU-visible-index draw path while
+   preserving the exact quad vertex format, texture coordinates, vertex colors,
+   premultiplied-alpha blend state, painter order, and any shader/stencil effects?
+
+Until both are answered against the exact 2.2081 ARM64 binary and a real GLES context,
+the culler remains a standalone backend and must not be presented as an active game
+optimization.
+
 ## Public 2.2081 ARM64 symbol reconnaissance (candidate hooks only)
 
 A public Android native-mod template explicitly targets Geometry Dash 2.2081 ARM64 and
