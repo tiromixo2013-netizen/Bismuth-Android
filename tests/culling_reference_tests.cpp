@@ -1,6 +1,7 @@
 #include "bismuth/culling_reference.hpp"
 #include <cassert>
 #include <iostream>
+#include <limits>
 #include <vector>
 using namespace bismuth;
 int main() {
@@ -25,5 +26,15 @@ int main() {
     };
     auto stable = cullStable(ordered, Rect{-1, -1, 10, 10});
     assert((stable.visibleIndices == std::vector<std::uint32_t>{0, 1, 2}));
-    std::cout << "Bismuth-Android reference tests passed\n";
+    // Invalid and non-finite bounds must be rejected consistently with the GPU classifier.
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    std::vector<Candidate> invalidBounds = {
+        {{5, 5, 1, 1}, 10}, {{nan, 0, 10, 10}, 11},
+        {{0, 0, 10, 10}, 12}
+    };
+    auto validOnly = cullStable(invalidBounds, view);
+    assert((validOnly.visibleIndices == std::vector<std::uint32_t>{2}));
+    auto invalidView = cullStable(candidates, Rect{nan, 0, 100, 100});
+    assert(invalidView.visibleIndices.empty());
+    std::cout << "Bismuth-Android reference tests passed\\n";
 }
