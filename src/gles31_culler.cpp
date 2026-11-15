@@ -1,4 +1,5 @@
 #include "bismuth/gles31_culler.hpp"
+#include <cmath>
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include "embedded_shaders.hpp"
 namespace bismuth {
@@ -192,6 +193,12 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         return false;
     }
     ScopedComputeState state;
+    if (!std::isfinite(view.left) || !std::isfinite(view.bottom) ||
+        !std::isfinite(view.right) || !std::isfinite(view.top) ||
+        view.left > view.right || view.bottom > view.top) {
+        if (error) *error = "View rectangle must contain finite, non-inverted bounds";
+        return false;
+    }
     if (count == 0) {
         const GLuint emptyCommand[4] = {6u, 0u, 0u, 0u};
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirectCommand_);
