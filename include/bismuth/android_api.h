@@ -19,6 +19,7 @@ enum BismuthCapability {
     BISMUTH_CAP_GLES31_COMPUTE = 1u << 1
 };
 
+/* Bounds must be finite and normalized (left <= right, bottom <= top). Invalid bounds are culled. */
 /* Matches the 32-byte std430 Candidate record used by the compute shaders. */
 typedef struct BismuthCandidate {
     float left;
