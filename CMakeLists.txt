@@ -4,6 +4,10 @@ option(BISMUTH_BUILD_TESTS "Build host-side reference tests" ON)
 option(BISMUTH_ENABLE_GLES31 "Build the Android OpenGL ES 3.1 backend" OFF)
 
 # Generate embedded shaders from the authoritative shader files.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/classify.comp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/group_offsets.comp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/scatter.comp")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/classify.comp" BISMUTH_CLASSIFY_SHADER)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/group_offsets.comp" BISMUTH_OFFSETS_SHADER)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/scatter.comp" BISMUTH_SCATTER_SHADER)
