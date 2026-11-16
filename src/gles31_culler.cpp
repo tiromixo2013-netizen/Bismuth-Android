@@ -103,21 +103,20 @@ Gles31Culler::~Gles31Culler() { reset(); }
 void Gles31Culler::reset() noexcept {
     // GLES object deletion is context-dependent. The owner must call reset()
     // while the context that created these objects is current.
-    const GLuint programs[] = {classifyProgram_, offsetsProgram_, scatterProgram_};
-    if (programs[0] || programs[1] || programs[2])
-        glDeleteProgram(programs[0]), glDeleteProgram(programs[1]), glDeleteProgram(programs[2]);
-    const GLuint buffers[] = {candidates_, flags_, localOffsets_, groupSums_, groupOffsets_, visibleIndices_, indirectCommand_, indexedCommand_};
+    const GLuint programs[] = {classifyProgram_, offsetsProgram_, scatterProgram_, atlasIndicesProgram_};
+    for (GLuint program : programs) if (program) glDeleteProgram(program);
+    const GLuint buffers[] = {candidates_, flags_, localOffsets_, groupSums_, groupOffsets_, visibleIndices_, indirectCommand_, indexedCommand_, atlasElementIndices_};
     bool hasBuffer = false;
     for (GLuint buffer : buffers) hasBuffer = hasBuffer || buffer != 0;
-    if (hasBuffer) glDeleteBuffers(8, buffers);
-    classifyProgram_ = offsetsProgram_ = scatterProgram_ = 0;
+    if (hasBuffer) glDeleteBuffers(9, buffers);
+    classifyProgram_ = offsetsProgram_ = scatterProgram_ = atlasIndicesProgram_ = 0;
     candidates_ = flags_ = localOffsets_ = groupSums_ = 0;
-    groupOffsets_ = visibleIndices_ = indirectCommand_ = indexedCommand_ = 0;
+    groupOffsets_ = visibleIndices_ = indirectCommand_ = indexedCommand_ = atlasElementIndices_ = 0;
     capacity_ = groupCapacity_ = uploadedCount_ = 0;
 }
 
 bool Gles31Culler::initialize(std::string* error) {
-    if (classifyProgram_ || offsetsProgram_ || scatterProgram_) {
+    if (classifyProgram_ || offsetsProgram_ || scatterProgram_ || atlasIndicesProgram_) {
         if (error) *error = "Culler is already initialized; call reset() first";
         return false;
     }
@@ -150,11 +149,13 @@ bool Gles31Culler::initialize(std::string* error) {
     if (!offsetsProgram_) { reset(); return false; }
     scatterProgram_ = compileCompute(shaders::scatter, error);
     if (!scatterProgram_) { reset(); return false; }
+    atlasIndicesProgram_ = compileCompute(shaders::atlasIndices, error);
+    if (!atlasIndicesProgram_) { reset(); return false; }
     glGenBuffers(1, &candidates_); glGenBuffers(1, &flags_); glGenBuffers(1, &localOffsets_);
     glGenBuffers(1, &groupSums_); glGenBuffers(1, &groupOffsets_); glGenBuffers(1, &visibleIndices_);
-    glGenBuffers(1, &indirectCommand_); glGenBuffers(1, &indexedCommand_);
+    glGenBuffers(1, &indirectCommand_); glGenBuffers(1, &indexedCommand_); glGenBuffers(1, &atlasElementIndices_);
     if (glGetError() != GL_NO_ERROR || !candidates_ || !flags_ || !localOffsets_ ||
-        !groupSums_ || !groupOffsets_ || !visibleIndices_ || !indirectCommand_ || !indexedCommand_) {
+        !groupSums_ || !groupOffsets_ || !visibleIndices_ || !indirectCommand_ || !indexedCommand_ || !atlasElementIndices_) {
         if (error) *error = "Failed to create GLES storage buffers";
         reset(); return false;
     }
@@ -183,6 +184,7 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
     bufferData(groupSums_, static_cast<GLsizeiptr>(groups) * sizeof(GLuint));
     bufferData(groupOffsets_, static_cast<GLsizeiptr>(groups) * sizeof(GLuint));
     bufferData(visibleIndices_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint));
+    bufferData(atlasElementIndices_, static_cast<GLsizeiptr>(newCapacity) * 3 * sizeof(GLuint));
     bufferData(indirectCommand_, 4 * sizeof(GLuint));
     if (glGetError() != GL_NO_ERROR) {
         capacity_ = groupCapacity_ = uploadedCount_ = 0;
@@ -194,7 +196,7 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
 }
 
 bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, std::string* error) {
-    if (!classifyProgram_ || !candidates_ || !indirectCommand_ || !indexedCommand_) {
+    if (!classifyProgram_ || !candidates_ || !indirectCommand_ || !indexedCommand_ || !atlasElementIndices_) {
         if (error) *error = "Culler is not initialized";
         return false;
     }
@@ -272,7 +274,15 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, visibleIndices_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, candidates_);
     glDispatchCompute(groups, 1, 1);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    glUseProgram(atlasIndicesProgram_);
+    glUniform1ui(glGetUniformLocation(atlasIndicesProgram_, "uCandidateCount"), count);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, visibleIndices_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, atlasElementIndices_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indexedCommand_);
+    glDispatchCompute(groups, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT |
+                    GL_ELEMENT_ARRAY_BARRIER_BIT);
     if (glGetError() != GL_NO_ERROR) {
         return failClosed("GLES compute dispatch failed");
     }
