@@ -57,7 +57,7 @@ extern "C" const char* bismuth_android_build_id() {
 extern "C" std::uint32_t bismuth_android_capabilities() {
     return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
            BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API |
-           BISMUTH_CAP_COCOS_PASSIVE_HOOKS;
+           BISMUTH_CAP_COCOS_PASSIVE_HOOKS | BISMUTH_CAP_GPU_DRAW_BRIDGE;
 }
 extern "C" void* bismuth_create() {
     return new (std::nothrow) BismuthInstance{};
@@ -103,6 +103,13 @@ extern "C" std::uint32_t bismuth_indexed_command_buffer(void* handle) {
 }
 extern "C" std::uint32_t bismuth_atlas_element_index_buffer(void* handle) {
     return handle ? static_cast<BismuthInstance*>(handle)->culler.atlasElementIndexBuffer() : 0u;
+}
+
+extern "C" void bismuth_set_gpu_draw_bridge_enabled(int enabled) {
+    bismuth::setGpuDrawBridgeEnabled(enabled != 0);
+}
+extern "C" int bismuth_is_gpu_draw_bridge_enabled() {
+    return bismuth::isGpuDrawBridgeEnabled() ? 1 : 0;
 }
 
 extern "C" int bismuth_auto_hook_status() {
