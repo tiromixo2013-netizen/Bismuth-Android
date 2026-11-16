@@ -10,6 +10,7 @@
 #include <elf.h>
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
