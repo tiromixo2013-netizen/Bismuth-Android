@@ -131,6 +131,10 @@ extern "C" int bismuth_install_cocos_hooks(void* handle, char* error, std::uint3
 extern "C" void bismuth_observer_begin_frame(void* handle) {
     if (handle) static_cast<BismuthInstance*>(handle)->observer.beginFrame();
 }
+extern "C" int bismuth_observer_record_frame_start(void* handle, std::uint64_t monotonicNs) {
+    if (!handle) return -1;
+    return static_cast<BismuthInstance*>(handle)->observer.recordFrameStart(monotonicNs) ? 0 : -2;
+}
 extern "C" void bismuth_observer_record_batch_draw(void* handle, std::uint32_t childCount) {
     if (handle) static_cast<BismuthInstance*>(handle)->observer.recordBatchDraw(childCount);
 }
@@ -167,6 +171,12 @@ extern "C" int bismuth_observer_snapshot(void* handle, BismuthAtlasTelemetry* te
     telemetry->dirty_uploads = counters.dirtyUploads;
     telemetry->uploaded_quads = counters.uploadedQuads;
     telemetry->max_children_in_batch = counters.maxChildrenInBatch;
+    telemetry->frame_interval_sample_count = counters.frameIntervals.sampleCount;
+    telemetry->frame_interval_last_ns = counters.frameIntervals.lastIntervalNs;
+    telemetry->frame_interval_mean_ns = counters.frameIntervals.meanIntervalNs;
+    telemetry->frame_interval_p50_ns = counters.frameIntervals.p50IntervalNs;
+    telemetry->frame_interval_p95_ns = counters.frameIntervals.p95IntervalNs;
+    telemetry->frame_interval_p99_ns = counters.frameIntervals.p99IntervalNs;
     const auto revision = instance->observer.revision();
     if (slotsRevision) *slotsRevision = revision.slots;
     if (contentRevision) *contentRevision = revision.content;
