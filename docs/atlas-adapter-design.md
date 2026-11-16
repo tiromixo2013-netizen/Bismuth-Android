@@ -51,8 +51,12 @@ input order and are omitted for culled candidates.
 
 The GLES state guard now preserves indexed SSBO bindings 0..4 because the
 scatter pass consumes the candidate buffer at binding 4. Devices must expose at
-least five SSBO binding points. This remains a standalone compute output: it
-does not yet build the five-word indexed indirect command or issue an atlas draw.
+least five SSBO binding points. The offsets pass now also writes a separate five-word indexed-atlas command
+buffer (`count = visibleSlotCount * 6`, one instance when non-empty, zero
+first-index/base-vertex/base-instance). The original four-word arrays command
+remains separate and unchanged. The new command is only prepared as GPU output;
+this project does not yet issue an indexed indirect atlas draw, because support
+for the required GLES entry point/extension must be detected on the target.
 
 ## Why a separate indexed path is required
 
