@@ -18,11 +18,17 @@ GNU Build ID and verifies both resolved symbols belong to
   original function unchanged.
 - `CCTextureAtlas::updateQuad(quad, index)`: calls the original function
   first, then records a successful quad-content write.
+- `CCTextureAtlas::removeAllQuads()`: calls the original function first, then
+  invalidates the atlas slot mapping.
+- `CCTextureAtlas::resizeCapacity(capacity)`: preserves the original boolean
+  result and invalidates the slot mapping whenever a different capacity was
+  requested. The target routine can partially tear down storage on allocation
+  failure, so invalidation is conservative even when it returns false.
 
 The batch child count is intentionally reported as zero until its runtime
-object layout is independently validated. Structural atlas mutations and
-dirty VBO uploads are not hooked yet. Do not use these counters as proof that
-the slot map is stable or that GPU culling is safe to enable.
+object layout is independently validated. Insert/remove/move operations other
+than remove-all, and dirty VBO uploads, are not hooked yet. Do not use these
+counters as proof that the slot map is stable or that GPU culling is safe to enable.
 
 ## API contract
 
@@ -49,6 +55,7 @@ while game threads may be running.
 ## Remaining validation
 
 - Build/CI must pass with the pinned Dobby dependency.
+- Add and validate hooks for insert/remove/move operations and dirty VBO uploads.
 - Install in the actual game process and verify the expected build-ID check.
 - Confirm callbacks execute on the render thread and that counters increase.
 - Add structural mutation hooks only after every signature and success
