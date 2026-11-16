@@ -1,4 +1,5 @@
 #include "bismuth/cocos_hooks.hpp"
+#include "bismuth/target_layout.hpp"
 
 #if defined(__ANDROID__) && defined(BISMUTH_ENABLE_COCOS_HOOKS)
 
@@ -166,12 +167,18 @@ void releaseObserver() noexcept {
 }
 
 void hookedBatchDraw(void* self) {
+    // Read the target-verified child count before the original draw mutates no
+    // layout state. This is a single bounded metadata read, not a child walk.
+    std::uint32_t childCount = 0;
+    target_layout::readBatchChildCount(self, childCount);
+
     const auto start = std::chrono::steady_clock::now();
     if (g_originalBatchDraw) g_originalBatchDraw(self);
     const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - start).count();
     AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordBatchDraw(0, elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0u);
+    if (observer) observer->recordBatchDraw(
+        childCount, elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0u);
     releaseObserver();
 }
 
