@@ -75,9 +75,14 @@ private:
     GLint64 indexedStorageSize_[5] = {0, 0, 0, 0, 0};
 };
 
-void bufferData(GLuint id, GLsizeiptr bytes) {
+bool bufferData(GLuint id, GLsizeiptr bytes) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, id);
     glBufferData(GL_SHADER_STORAGE_BUFFER, bytes, nullptr, GL_DYNAMIC_DRAW);
+    // Query the allocation size instead of consuming the context-wide GL error
+    // flag, which may contain an error raised by the game's renderer.
+    GLint actualBytes = -1;
+    glGetBufferParameteriv(GL_SHADER_STORAGE_BUFFER, GL_BUFFER_SIZE, &actualBytes);
+    return actualBytes >= 0 && static_cast<GLsizeiptr>(actualBytes) == bytes;
 }
 
 // Best-effort fail-closed command reset. ScopedComputeState restores the
@@ -155,16 +160,15 @@ bool Gles31Culler::initialize(std::string* error) {
     glGenBuffers(1, &candidates_); glGenBuffers(1, &flags_); glGenBuffers(1, &localOffsets_);
     glGenBuffers(1, &groupSums_); glGenBuffers(1, &groupOffsets_); glGenBuffers(1, &visibleIndices_);
     glGenBuffers(1, &indirectCommand_); glGenBuffers(1, &indexedCommand_); glGenBuffers(1, &atlasElementIndices_);
-    if (glGetError() != GL_NO_ERROR || !candidates_ || !flags_ || !localOffsets_ ||
+    if (!candidates_ || !flags_ || !localOffsets_ ||
         !groupSums_ || !groupOffsets_ || !visibleIndices_ || !indirectCommand_ || !indexedCommand_ || !atlasElementIndices_) {
         if (error) *error = "Failed to create GLES storage buffers";
         reset(); return false;
     }
     // Allocate the indirect command immediately so an empty-scene dispatch is valid
     // even before the first non-empty candidate upload.
-    bufferData(indirectCommand_, 4 * sizeof(GLuint));
-    bufferData(indexedCommand_, 5 * sizeof(GLuint));
-    if (glGetError() != GL_NO_ERROR) {
+    if (!bufferData(indirectCommand_, 4 * sizeof(GLuint)) ||
+        !bufferData(indexedCommand_, 5 * sizeof(GLuint))) {
         if (error) *error = "Failed to allocate the indirect command buffer";
         reset(); return false;
     }
@@ -179,15 +183,14 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
     if (count <= capacity_) return true;
     const std::uint32_t groups = (count + kWorkgroupSize - 1u) / kWorkgroupSize;
     const std::uint32_t newCapacity = groups * kWorkgroupSize;
-    bufferData(candidates_, static_cast<GLsizeiptr>(newCapacity) * sizeof(Candidate));
-    bufferData(flags_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint));
-    bufferData(localOffsets_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint));
-    bufferData(groupSums_, static_cast<GLsizeiptr>(groups) * sizeof(GLuint));
-    bufferData(groupOffsets_, static_cast<GLsizeiptr>(groups) * sizeof(GLuint));
-    bufferData(visibleIndices_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint));
-    bufferData(atlasElementIndices_, static_cast<GLsizeiptr>(newCapacity) * 3 * sizeof(GLuint));
-    bufferData(indirectCommand_, 4 * sizeof(GLuint));
-    if (glGetError() != GL_NO_ERROR) {
+    if (!bufferData(candidates_, static_cast<GLsizeiptr>(newCapacity) * sizeof(Candidate)) ||
+        !bufferData(flags_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint)) ||
+        !bufferData(localOffsets_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint)) ||
+        !bufferData(groupSums_, static_cast<GLsizeiptr>(groups) * sizeof(GLuint)) ||
+        !bufferData(groupOffsets_, static_cast<GLsizeiptr>(groups) * sizeof(GLuint)) ||
+        !bufferData(visibleIndices_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint)) ||
+        !bufferData(atlasElementIndices_, static_cast<GLsizeiptr>(newCapacity) * 3 * sizeof(GLuint)) ||
+        !bufferData(indirectCommand_, 4 * sizeof(GLuint))) {
         capacity_ = groupCapacity_ = uploadedCount_ = uploadedAtlasCapacity_ = 0;
         if (error) *error = "Failed to allocate GLES storage buffers";
         return false;
@@ -240,13 +243,8 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, candidates_);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
                     static_cast<GLsizeiptr>(candidates.size()) * sizeof(Candidate), candidates.data());
-    if (glGetError() != GL_NO_ERROR) {
-        uploadedCount_ = uploadedAtlasCapacity_ = 0;
-        clearIndirectCommand(indirectCommand_);
-        clearIndexedCommand(indexedCommand_);
-        if (error) *error = "Candidate upload failed";
-        return false;
-    }
+    // The upload range is bounded by the verified buffer allocation. Avoid
+    // polling the sticky error flag shared with the game's renderer.
     uploadedCount_ = static_cast<std::uint32_t>(candidates.size());
     uploadedAtlasCapacity_ = atlasCapacity;
     return true;
@@ -314,9 +312,10 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glDispatchCompute(groups, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT |
                     GL_ELEMENT_ARRAY_BARRIER_BIT);
-    if (glGetError() != GL_NO_ERROR) {
-        return failClosed("GLES compute dispatch failed");
-    }
+    // GLES commands are queued on the game's context. Do not poll the global
+    // error flag here: doing so could consume an unrelated renderer error.
+    // Runtime command/output validation belongs in the dedicated integration
+    // test harness, not in this shared-context hot path.
     return true;
 }
 }
