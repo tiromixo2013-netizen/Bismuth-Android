@@ -80,3 +80,18 @@ The tracker is a host-tested bookkeeping primitive only. It does not prove
 that all mutation sites have been found, that callbacks execute after
 successful mutations, or that a runtime cache will improve performance.
 The live renderer remains untouched.
+
+## Per-frame passive telemetry
+
+`include/bismuth/atlas_observation.hpp` adds allocation-free counters for a
+future observer: batch draw calls, child transform calls, unknown transform
+overrides, quad writes, structural mutations, dirty uploads, uploaded quad
+counts, and maximum children in one batch. `beginFrame()` resets the current
+snapshot. The counters are render-thread-owned and intentionally do not use
+atomics or allocate memory; a future hook must confirm all callbacks execute
+on the same render thread before using this class.
+
+These counters are not connected to the game. They define what to measure
+without changing engine behavior. In particular, an unknown virtual override
+must be counted and left on the original path rather than treated as the base
+CCSprite implementation.
