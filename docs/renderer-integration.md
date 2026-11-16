@@ -432,3 +432,19 @@ to trace the corresponding `CCSpriteBatchNode` child/atlas-index updates and
 sort paths, then define an observation-only event log for slot changes and
 per-child transform calls. No draw replacement or transform bypass is justified
 yet.
+
+
+## Fail-closed dispatch behavior
+
+The standalone GLES culler now clears its four-word indirect command to
+`{vertexCount=6, instanceCount=0, firstVertex=0, baseInstance=0}` when
+a dispatch is rejected because the view rectangle is invalid, the uploaded
+candidate count does not match, or a compute dispatch reports a GLES error.
+It also invalidates the remembered upload count. This prevents a consumer from
+accidentally reusing a previous successful frame's draw count after a failed
+dispatch. Clearing is best-effort: if the GL driver also rejects the reset,
+the API reports that failure and the caller must not consume the command.
+
+This is a defensive property of the standalone prototype only. It does not
+replace renderer-side validation, and it has not yet been exercised on a
+physical Android GLES driver.
