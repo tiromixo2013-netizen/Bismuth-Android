@@ -43,7 +43,7 @@ BISMUTH_API int bismuth_dispatch(void* handle, float left, float bottom, float r
 BISMUTH_API uint32_t bismuth_visible_index_buffer(void* handle);
 /* Four-word DrawArraysIndirect command (6 vertices, visible candidate count). */
 BISMUTH_API uint32_t bismuth_indirect_command_buffer(void* handle);
-/* Five-word indexed-atlas command: count=visible slots*6, one instance when non-empty. */
+/* Five-word GLES 3.1 DrawElementsIndirect command: count=visible slots*6, one instance when non-empty; reserved word is zero. */
 BISMUTH_API uint32_t bismuth_indexed_command_buffer(void* handle);
 /* Packed 16-bit atlas EBO indices in stable visible-slot order; bind as GL_ELEMENT_ARRAY_BUFFER. */
 BISMUTH_API uint32_t bismuth_atlas_element_index_buffer(void* handle);
