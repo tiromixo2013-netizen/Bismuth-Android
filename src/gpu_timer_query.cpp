@@ -121,9 +121,9 @@ void GlesGpuTimerQuery::poll() noexcept {
     GLint disjoint = 0;
     glGetIntegerv(kGpuDisjointExt, &disjoint);
     if (disjoint != 0) {
-        for (bool& pending : pending_) pending = false;
+        for (std::uint32_t slot = 0; slot < kQueryCount; ++slot)
+            if (pending_[slot]) discardPending_[slot] = true;
         disjointEvents_.fetch_add(1, std::memory_order_relaxed);
-        return;
     }
     for (std::uint32_t slot = 0; slot < kQueryCount; ++slot) {
         if (!pending_[slot]) continue;
@@ -131,9 +131,12 @@ void GlesGpuTimerQuery::poll() noexcept {
         getQueryObjectuiv_(queries_[slot], kQueryResultAvailableExt, &available);
         if (!available) continue; // Never wait for the GPU.
         GLuint64 elapsed = 0;
-        getQueryObjectui64v_(queries_[slot], kQueryResultExt, &elapsed);
+        if (!discardPending_[slot]) {
+            getQueryObjectui64v_(queries_[slot], kQueryResultExt, &elapsed);
+            if (elapsed != 0) recordSample(static_cast<std::uint64_t>(elapsed));
+        }
         pending_[slot] = false;
-        if (elapsed != 0) recordSample(static_cast<std::uint64_t>(elapsed));
+        discardPending_[slot] = false;
     }
 }
 
