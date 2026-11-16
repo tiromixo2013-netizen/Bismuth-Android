@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
-project(BismuthGeode VERSION 0.2.0 LANGUAGES C CXX)
+project(BismuthGeode VERSION 0.3.0 LANGUAGES C CXX)
 
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "GEODE_SDK is not set")
@@ -11,7 +11,7 @@ endif()
 set(BISMUTH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 set(BISMUTH_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${BISMUTH_GENERATED_INCLUDE_DIR}")
-foreach(shader classify group_offsets scatter atlas_indices)
+foreach(shader classify group_offsets scatter atlas_indices atlas_candidates)
     file(READ "${BISMUTH_ROOT}/shaders/${shader}.comp" BISMUTH_${shader}_SOURCE)
 endforeach()
 file(WRITE "${BISMUTH_GENERATED_INCLUDE_DIR}/embedded_shaders.hpp"
@@ -21,6 +21,7 @@ inline constexpr const char* classify = R\"BSHADER(${BISMUTH_classify_SOURCE})BS
 inline constexpr const char* offsets = R\"BSHADER(${BISMUTH_group_offsets_SOURCE})BSHADER\";
 inline constexpr const char* scatter = R\"BSHADER(${BISMUTH_scatter_SOURCE})BSHADER\";
 inline constexpr const char* atlasIndices = R\"BSHADER(${BISMUTH_atlas_indices_SOURCE})BSHADER\";
+inline constexpr const char* atlasCandidates = R\"BSHADER(${BISMUTH_atlas_candidates_SOURCE})BSHADER\";
 }
 ")
 
