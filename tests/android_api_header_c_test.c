@@ -1,4 +1,5 @@
 #include "bismuth/android_api.h"
+#include <stddef.h>
 
 typedef int (*BismuthUploadSignature)(void*, const BismuthCandidate*, uint32_t, uint32_t);
 typedef int (*BismuthInstallHooksSignature)(void*, char*, uint32_t);
@@ -19,8 +20,16 @@ _Static_assert(_Generic(&bismuth_observer_snapshot, BismuthObserverSnapshotSigna
 _Static_assert(_Generic(&bismuth_observer_record_structural_mutation,
                         BismuthObserverMutationSignature: 1, default: 0),
                "observer mutation C ABI signature must remain stable");
-_Static_assert(sizeof(BismuthAtlasTelemetry) == 64,
-               "BismuthAtlasTelemetry must have a stable 64-byte C layout");
+_Static_assert(sizeof(BismuthAtlasTelemetry) == 136,
+               "BismuthAtlasTelemetry must match the C++ snapshot layout");
+_Static_assert(offsetof(BismuthAtlasTelemetry, max_children_in_batch) == 80,
+               "batch child count ABI offset mismatch");
+_Static_assert(offsetof(BismuthAtlasTelemetry, reserved0) == 84,
+               "telemetry ABI padding offset mismatch");
+_Static_assert(offsetof(BismuthAtlasTelemetry, frame_interval_sample_count) == 88,
+               "frame sample count ABI offset mismatch");
+_Static_assert(offsetof(BismuthAtlasTelemetry, frame_interval_last_ns) == 96,
+               "frame interval ABI offset mismatch");
 
 int main(void) {
     if (BISMUTH_MAX_CANDIDATES != 16384u) return 1;
