@@ -8,6 +8,8 @@ CullResult cullStable(const std::vector<Candidate>& candidates, const Rect& view
         if (intersects(candidates[i].bounds, view)) out.visibleIndices.push_back(i);
     }
     return out;
+}
+
 std::vector<std::uint32_t> cullStablePayloads(const std::vector<Candidate>& candidates, const Rect& view) {
     std::vector<std::uint32_t> out;
     if (!isValidRect(view)) return out;
@@ -16,6 +18,5 @@ std::vector<std::uint32_t> cullStablePayloads(const std::vector<Candidate>& cand
         if (intersects(candidate.bounds, view)) out.push_back(candidate.payload);
     }
     return out;
-}
 }
 }
