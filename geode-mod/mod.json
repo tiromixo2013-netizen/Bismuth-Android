@@ -5,9 +5,9 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "developer": "Bismuth Project",
-  "description": "Experimental observer and GLES 3.1 compute-culling prototype for Geometry Dash Android 2.2081. GPU draw replacement is disabled.",
+  "description": "Experimental GLES 3.1 GPU atlas-culling bridge for Geometry Dash Android 2.2081. Requires device testing; original renderer fallback is retained.",
   "tags": ["performance", "utility"],
   "settings": {
     "gpu-title": {
@@ -16,9 +16,9 @@
     },
     "gpu-draw-bridge-enabled": {
       "type": "bool",
-      "name": "GPU draw bridge (locked)",
-      "description": "Temporarily locked off. Real per-quad bounds, correct clip-space mapping, and device validation are required before enabling GPU draw replacement.",
-      "default": false
+      "name": "Enable experimental GPU atlas bridge",
+      "description": "Runs the experimental GPU atlas path when supported. Disable if you see visual glitches, crashes, or worse performance.",
+      "default": true
     },
     "status-title": {
       "type": "title",

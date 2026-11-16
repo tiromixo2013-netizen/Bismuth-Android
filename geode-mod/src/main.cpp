@@ -10,11 +10,9 @@ bismuth::AtlasPassiveObserver g_observer;
 bool g_hooksReady = false;
 
 void applyGpuBridgeSetting(bool enabled) {
-    // The draw replacement is intentionally locked off until real per-quad
-    // clip-space bounds and runtime validation are available.
-    (void)enabled;
-    bismuth::setGpuDrawBridgeEnabled(false);
-    log::info("Bismuth GPU draw bridge: OFF (awaiting calibrated bounds and device validation)");
+    const bool active = enabled && g_hooksReady;
+    bismuth::setGpuDrawBridgeEnabled(active);
+    log::info("Bismuth GPU atlas bridge: {}", active ? "ENABLED (experimental)" : "OFF");
 }
 }
 
@@ -32,12 +30,6 @@ $on_mod(Loaded) {
 
     listenForSettingChanges<bool>("gpu-draw-bridge-enabled", [](bool value) {
         applyGpuBridgeSetting(value);
-        if (Mod::get()->getSettingValue<bool>("diagnostics")) {
-            Notification::create(
-                "GPU draw bridge remains locked until culling is validated",
-                NotificationIcon::Info
-            )->show();
-        }
     });
 
     listenForSettingChanges<bool>("diagnostics", [](bool enabled) {
