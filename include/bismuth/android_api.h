@@ -48,6 +48,12 @@ typedef struct BismuthAtlasTelemetry {
     uint64_t dirty_uploads;
     uint64_t uploaded_quads;
     uint32_t max_children_in_batch;
+    uint32_t frame_interval_sample_count;
+    uint64_t frame_interval_last_ns;
+    uint64_t frame_interval_mean_ns;
+    uint64_t frame_interval_p50_ns;
+    uint64_t frame_interval_p95_ns;
+    uint64_t frame_interval_p99_ns;
 } BismuthAtlasTelemetry;
 
 BISMUTH_API const char* bismuth_android_build_id(void);
@@ -84,6 +90,8 @@ BISMUTH_API const char* bismuth_auto_hook_error(void);
  * hook adapter calls the relevant events after observing original engine calls.
  */
 BISMUTH_API void bismuth_observer_begin_frame(void* handle);
+/* Feed one monotonic frame-start timestamp (nanoseconds); first call primes the window. */
+BISMUTH_API int bismuth_observer_record_frame_start(void* handle, uint64_t monotonic_ns);
 BISMUTH_API void bismuth_observer_record_batch_draw(void* handle, uint32_t child_count);
 BISMUTH_API void bismuth_observer_record_sprite_transform(void* handle, int known_base_implementation);
 BISMUTH_API void bismuth_observer_record_quad_write(void* handle, int original_call_succeeded);
