@@ -9,5 +9,5 @@ int main(void) {
     BismuthCandidate candidate = {0};
     candidate.left = -1.0f;
     candidate.right = 1.0f;
-    return sizeof(candidate) == 32 && BISMUTH_CAP_GLES31_COMPUTE == 2u ? 0 : 1;
+    return sizeof(candidate) == 32 && BISMUTH_CAP_GLES31_COMPUTE == 2u && BISMUTH_CAP_ATLAS_INDEX_OUTPUT == 4u ? 0 : 1;
 }
