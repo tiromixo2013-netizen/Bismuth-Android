@@ -40,6 +40,9 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
     }
     std::string message;
     if (bismuth::installCocosPassiveHooks(&instance->observer, &message)) {
+        // Enable the GPU atlas path by default. Unsupported shader/layout/GLES
+        // configurations automatically fall back to the original Cocos draw.
+        bismuth::setGpuDrawBridgeEnabled(true);
         g_autoHookInstance = instance;
         g_autoHookStatus = 1;
         g_autoHookError.clear();
