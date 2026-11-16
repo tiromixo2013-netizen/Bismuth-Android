@@ -12,6 +12,11 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
 
 // Detaches telemetry safely. The pass-through hooks remain installed for the
 // process lifetime because unpatching while game threads execute is unsafe.
+// Runtime switch for passive counters/timers. Disabling skips measurement work;
+// installed pass-through trampolines remain in place for process safety.
+void setPassiveTelemetryEnabled(bool enabled) noexcept;
+bool isPassiveTelemetryEnabled() noexcept;
+
 // Experimental full-visible GPU EBO bridge. Disabled by default; enable only
 // for controlled on-device validation after passive hooks are confirmed.
 void setGpuDrawBridgeEnabled(bool enabled) noexcept;
