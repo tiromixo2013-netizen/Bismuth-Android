@@ -451,3 +451,19 @@ whether the reset itself can be verified.
 This is a defensive property of the standalone prototype only. It does not
 replace renderer-side validation, and it has not yet been exercised on a
 physical Android GLES driver.
+
+
+## Compute backend GL-state preservation detail
+
+The GLES backend's scoped state guard preserves the current program, generic
+shader-storage-buffer binding, and indexed SSBO bindings 0 through 3. For each
+indexed binding it captures the buffer object plus the bound range start and
+size, then restores the range with `glBindBufferRange` (or an unbound/base
+binding with `glBindBufferBase`). This matters when the host renderer uses
+SSBO subranges: restoring only the buffer object with `glBindBufferBase`
+would silently widen the binding and could corrupt unrelated renderer state.
+
+This guard still does not claim to preserve every GLES state category. The
+current compute backend only changes the program and SSBO binding state; any
+future additions that touch textures, image units, VAOs, indirect draw
+bindings, or other state must extend the guard and receive dedicated tests.
