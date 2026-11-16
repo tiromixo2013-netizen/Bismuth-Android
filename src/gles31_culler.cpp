@@ -109,13 +109,13 @@ Gles31Culler::~Gles31Culler() { reset(); }
 void Gles31Culler::reset() noexcept {
     // GLES object deletion is context-dependent. The owner must call reset()
     // while the context that created these objects is current.
-    const GLuint programs[] = {classifyProgram_, offsetsProgram_, scatterProgram_, atlasIndicesProgram_};
+    const GLuint programs[] = {classifyProgram_, atlasCandidatesProgram_, offsetsProgram_, scatterProgram_, atlasIndicesProgram_};
     for (GLuint program : programs) if (program) glDeleteProgram(program);
     const GLuint buffers[] = {candidates_, flags_, localOffsets_, groupSums_, groupOffsets_, visibleIndices_, indirectCommand_, indexedCommand_, atlasElementIndices_};
     bool hasBuffer = false;
     for (GLuint buffer : buffers) hasBuffer = hasBuffer || buffer != 0;
     if (hasBuffer) glDeleteBuffers(9, buffers);
-    classifyProgram_ = offsetsProgram_ = scatterProgram_ = atlasIndicesProgram_ = 0;
+    classifyProgram_ = atlasCandidatesProgram_ = offsetsProgram_ = scatterProgram_ = atlasIndicesProgram_ = 0;
     candidates_ = flags_ = localOffsets_ = groupSums_ = 0;
     groupOffsets_ = visibleIndices_ = indirectCommand_ = indexedCommand_ = atlasElementIndices_ = 0;
     capacity_ = groupCapacity_ = uploadedCount_ = uploadedAtlasCapacity_ = 0;
@@ -151,7 +151,7 @@ bool Gles31Culler::initialize(std::string* error) {
     }
     classifyProgram_ = compileCompute(shaders::classify, error);
     if (!classifyProgram_) { reset(); return false; }
-    offsetsProgram_ = compileCompute(shaders::offsets, error);
+    atlasCandidatesProgram_ = compileCompute(shaders::atlasCandidates, error);\n    if (!atlasCandidatesProgram_) { reset(); return false; }\n    offsetsProgram_ = compileCompute(shaders::offsets, error);
     if (!offsetsProgram_) { reset(); return false; }
     scatterProgram_ = compileCompute(shaders::scatter, error);
     if (!scatterProgram_) { reset(); return false; }
@@ -246,6 +246,47 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
     // The upload range is bounded by the verified buffer allocation. Avoid
     // polling the sticky error flag shared with the game's renderer.
     uploadedCount_ = static_cast<std::uint32_t>(candidates.size());
+    uploadedAtlasCapacity_ = atlasCapacity;
+    return true;
+}
+
+bool Gles31Culler::generateAtlasCandidates(GLuint atlasVertexBuffer,
+                                                   std::uint32_t startQuad,
+                                                   std::uint32_t count,
+                                                   std::uint32_t atlasCapacity,
+                                                   const float* mvpColumnMajor,
+                                                   std::string* error) {
+    if (!isInitialized() || !atlasVertexBuffer || !mvpColumnMajor) {
+        if (error) *error = "Atlas candidate generation requires an initialized culler, VBO, and MVP matrix";
+        return false;
+    }
+    if (count == 0 || count > kMaxCandidates || atlasCapacity > kAtlasMaxQuads16 ||
+        startQuad > atlasCapacity || count > atlasCapacity - startQuad) {
+        if (error) *error = "Atlas candidate range exceeds the supported 16-bit atlas range";
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
+        return false;
+    }
+    if (!allocate(count, error)) {
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
+        return false;
+    }
+
+    ScopedComputeState state;
+    glUseProgram(atlasCandidatesProgram_);
+    glUniformMatrix4fv(glGetUniformLocation(atlasCandidatesProgram_, "uMvp"),
+                       1, GL_FALSE, mvpColumnMajor);
+    glUniform1ui(glGetUniformLocation(atlasCandidatesProgram_, "uCount"), count);
+    glUniform1ui(glGetUniformLocation(atlasCandidatesProgram_, "uStartQuad"), startQuad);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, atlasVertexBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, candidates_);
+    const GLuint groups = (count + kWorkgroupSize - 1u) / kWorkgroupSize;
+    glDispatchCompute(groups, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    uploadedCount_ = count;
     uploadedAtlasCapacity_ = atlasCapacity;
     return true;
 }
