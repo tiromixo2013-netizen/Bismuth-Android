@@ -1,7 +1,6 @@
 #pragma once
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include "bismuth/culling_types.hpp"
-#include <GLES3/gl31.h>
 #include <string>
 namespace bismuth {
 class Gles31Culler {
@@ -25,22 +24,22 @@ public:
                groupSums_ != 0 && groupOffsets_ != 0 && visibleIndices_ != 0 &&
                indirectCommand_ != 0 && indexedCommand_ != 0 && atlasElementIndices_ != 0;
     }
-    GLuint visibleIndexBuffer() const noexcept { return visibleIndices_; }
-    GLuint indirectCommandBuffer() const noexcept { return indirectCommand_; }
-    GLuint indexedCommandBuffer() const noexcept { return indexedCommand_; }
+    std::uint32_t visibleIndexBuffer() const noexcept { return visibleIndices_; }
+    std::uint32_t indirectCommandBuffer() const noexcept { return indirectCommand_; }
+    std::uint32_t indexedCommandBuffer() const noexcept { return indexedCommand_; }
     // Packed 16-bit atlas element indices; bind as GL_ELEMENT_ARRAY_BUFFER and draw with GL_UNSIGNED_SHORT.
-    GLuint atlasElementIndexBuffer() const noexcept { return atlasElementIndices_; }
+    std::uint32_t atlasElementIndexBuffer() const noexcept { return atlasElementIndices_; }
     std::uint32_t capacity() const noexcept { return capacity_; }
     // Call before the GL context is destroyed or lost. All GL methods, including
     // destruction/reset, require the owning context to be current.
     void reset() noexcept;
 private:
-    GLuint classifyProgram_ = 0, offsetsProgram_ = 0, scatterProgram_ = 0, atlasIndicesProgram_ = 0;
+    std::uint32_t classifyProgram_ = 0, offsetsProgram_ = 0, scatterProgram_ = 0, atlasIndicesProgram_ = 0;
     // Resolve uniform names once during initialization; never query locations in dispatch().
-    GLint classifyViewLocation_ = -1, classifyCountLocation_ = -1;
+    std::int32_t classifyViewLocation_ = -1, classifyCountLocation_ = -1;
     GLint offsetsGroupCountLocation_ = -1, scatterCountLocation_ = -1;
     GLint atlasCandidateCountLocation_ = -1;
-    GLuint candidates_ = 0, flags_ = 0, localOffsets_ = 0, groupSums_ = 0;
+    std::uint32_t candidates_ = 0, flags_ = 0, localOffsets_ = 0, groupSums_ = 0;
     GLuint groupOffsets_ = 0, visibleIndices_ = 0, indirectCommand_ = 0, indexedCommand_ = 0, atlasElementIndices_ = 0;
     std::uint32_t capacity_ = 0, groupCapacity_ = 0, uploadedCount_ = 0, uploadedAtlasCapacity_ = 0;
     bool allocate(std::uint32_t count, std::string* error);
