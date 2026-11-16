@@ -32,6 +32,12 @@ Create and initialize a Bismuth instance as usual, then call
 executing. Installation is opt-in; loading `libbismuth.so` alone does not
 install hooks.
 
+When loaded through the repository APK injector, `JNI_OnLoad` attempts to install
+the two hooks automatically because the injector places Bismuth immediately
+after `System.loadLibrary("cocos2dcpp")`. Query `bismuth_auto_hook_status()`
+and `bismuth_auto_hook_error()` to see whether exact-binary validation and
+installation succeeded. A version mismatch is non-fatal to game startup.
+
 The two hooks are pass-through observers only. They do not skip transforms,
 change GL state, replace draw calls, alter blend state, or submit Bismuth's
 generated EBO. The original engine functions remain in the call chain.
