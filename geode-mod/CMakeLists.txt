@@ -56,4 +56,4 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     BISMUTH_ANDROID_GLES31=1
     BISMUTH_ENABLE_COCOS_HOOKS=1
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE dobby GLESv3 EGL dl log)
+target_link_libraries(${PROJECT_NAME} dobby GLESv3 EGL dl log)
