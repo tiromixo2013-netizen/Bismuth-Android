@@ -2,10 +2,12 @@
 
 ## Purpose and status
 
-This document defines a small host-side revision tracker for a future
-observation-only adapter. It is not connected to Geometry Dash, does not read
-game memory, and does not install hooks. Its job is to make cache invalidation
-rules explicit and testable before a runtime observer is written.
+This document defines the revision tracker and passive event bridge for a
+future runtime observation adapter. The tracker and C ABI event bridge are
+implemented and testable, but neither is connected to Geometry Dash yet:
+there is no installed hook, no game-memory reader, and no live telemetry.
+Their purpose is to make cache invalidation rules explicit before runtime
+instrumentation is written.
 
 ## Why two revisions are needed
 
@@ -74,13 +76,6 @@ atlas buffers in this phase.
 5. Revision tracking must be validated against actual insert/remove/move/resize
    behavior on the target device before enabling a fast path.
 
-## Limitations
-
-The tracker is a host-tested bookkeeping primitive only. It does not prove
-that all mutation sites have been found, that callbacks execute after
-successful mutations, or that a runtime cache will improve performance.
-The live renderer remains untouched.
-
 ## Per-frame passive telemetry
 
 `include/bismuth/atlas_observation.hpp` adds allocation-free counters for a
@@ -99,10 +94,37 @@ Mutation callbacks accept an explicit success flag: failed original operations
 do not advance revisions. Unknown transform overrides and successful dirty
 uploads conservatively advance the content revision. An unclassified or
 ambiguous mutation calls `invalidateUnknownMutation()`, which advances the
-structural revision and invalidates cached slot maps. This remains a host-side contract;
-it does not install hooks or infer that an engine operation succeeded.
+structural revision and invalidates cached slot maps.
 
-These counters are not connected to the game. They define what to measure
-without changing engine behavior. In particular, an unknown virtual override
-must be counted and left on the original path rather than treated as the base
-CCSprite implementation.
+## Native C ABI event bridge
+
+The Android shared library now exports a small C ABI bridge for an external
+hook adapter:
+
+- `bismuth_observer_begin_frame` resets per-frame counters.
+- `bismuth_observer_record_batch_draw` records a batch and its child count.
+- `bismuth_observer_record_sprite_transform` counts known and unknown
+  transform implementations; unknown implementations invalidate content.
+- `bismuth_observer_record_quad_write` and
+  `bismuth_observer_record_dirty_upload` update content revision only when
+  the original operation succeeded.
+- `bismuth_observer_record_structural_mutation` advances both revisions only
+  after success.
+- `bismuth_observer_invalidate_unknown_mutation` conservatively invalidates
+  slot mappings when an event cannot be classified.
+- `bismuth_observer_snapshot` copies telemetry and revision numbers to a C
+  structure.
+
+The C API uses render-thread ownership just like the underlying observer:
+calls must be serialized on the game's render thread. The snapshot function
+does not add locks or make concurrent reads safe. These exports are event
+sinks only. They do not locate functions, install trampolines, intercept calls,
+or read Cocos2d objects. CI checks the C declarations and exported symbols.
+
+## Limitations
+
+The revision tracker and event bridge are host/source-level components only.
+They do not prove that all mutation sites have been found, that callbacks
+execute after successful mutations, or that a runtime cache will improve
+performance. The live renderer remains untouched. Runtime hook installation,
+object-layout validation, and device testing are still required.
