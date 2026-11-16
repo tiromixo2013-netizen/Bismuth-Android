@@ -5,19 +5,19 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "developer": "Bismuth Project",
-  "description": "Geode Android settings shell for the Bismuth rendering prototype.",
+  "description": "Experimental GLES 3.1 GPU draw bridge for Geometry Dash Android 2.2081.",
   "tags": ["performance", "utility"],
   "settings": {
-    "prototype-title": {
+    "gpu-title": {
       "type": "title",
-      "name": "Bismuth prototype"
+      "name": "GPU processing"
     },
-    "prototype-enabled": {
+    "gpu-draw-bridge-enabled": {
       "type": "bool",
-      "name": "Enable prototype mode",
-      "description": "Stores your ON/OFF preference. The experimental GPU renderer bridge is not connected to this Geode package yet.",
+      "name": "Enable experimental GPU draw bridge",
+      "description": "Routes supported atlas draw calls through a GLES 3.1 compute-generated index buffer. The current bridge keeps every quad visible; GPU culling and measurable FPS gains are not implemented or guaranteed.",
       "default": false
     },
     "status-title": {
