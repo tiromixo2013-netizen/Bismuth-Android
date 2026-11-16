@@ -43,8 +43,9 @@ used by the Android renderer and does not claim a GPU performance improvement.
 
 The scatter pass now reads each visible candidate's `payload` and writes that
 value to the compacted output buffer, rather than writing the candidate's array
-index. The C API documents this as a caller-defined stable output ID; an atlas
-adapter must set it to the current quad slot. This lets the GPU produce the
+index. The C API documents this as a current atlas quad slot. Upload now requires the live atlas capacity and rejects
+any payload outside `[0, atlasCapacity)` before dispatch, preventing wrapped
+16-bit indices or reads beyond the current atlas vertex range. This lets the GPU produce the
 actual slot sequence needed by an indexed-atlas path without a CPU readback.
 The host reference helper and tests verify that payload IDs remain in stable
 input order and are omitted for culled candidates.
