@@ -21,7 +21,7 @@ public:
     // A zero count writes an indirect command with instanceCount=0.
     bool dispatch(const Rect& view, std::uint32_t candidateCount, std::string* error = nullptr);
     bool isInitialized() const noexcept {
-        return classifyProgram_ != 0 && atlasCandidatesProgram_ != 0 && offsetsProgram_ != 0 && scatterProgram_ != 0 && atlasIndicesProgram_ != 0 &&
+        return classifyProgram_ != 0 && atlasCandidatesProgram_ != 0 && offsetsProgram_ != 0 && scatterProgram_ != 0 &&
                candidates_ != 0 && flags_ != 0 && localOffsets_ != 0 &&
                groupSums_ != 0 && groupOffsets_ != 0 && visibleIndices_ != 0 &&
                indirectCommand_ != 0 && indexedCommand_ != 0 && atlasElementIndices_ != 0;
@@ -36,7 +36,7 @@ public:
     // destruction/reset, require the owning context to be current.
     void reset() noexcept;
 private:
-    GLuint classifyProgram_ = 0, atlasCandidatesProgram_ = 0, offsetsProgram_ = 0, scatterProgram_ = 0, atlasIndicesProgram_ = 0;
+    GLuint classifyProgram_ = 0, atlasCandidatesProgram_ = 0, offsetsProgram_ = 0, scatterProgram_ = 0;
     GLuint candidates_ = 0, flags_ = 0, localOffsets_ = 0, groupSums_ = 0;
     GLuint groupOffsets_ = 0, visibleIndices_ = 0, indirectCommand_ = 0, indexedCommand_ = 0, atlasElementIndices_ = 0;
     std::uint32_t capacity_ = 0, groupCapacity_ = 0, uploadedCount_ = 0, uploadedAtlasCapacity_ = 0;
