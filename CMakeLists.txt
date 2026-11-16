@@ -40,7 +40,7 @@ if(ANDROID AND BISMUTH_ENABLE_GLES31)
   target_compile_definitions(bismuth_gles31 PRIVATE BISMUTH_ANDROID_GLES31=1)
   target_link_libraries(bismuth_gles31 PUBLIC bismuth_core GLESv3)
 
-  # Bootstrap library only; no game renderer hook is installed yet.
+  # Build the native bootstrap; passive Cocos hooks install only when the exported API is called.
   if(BISMUTH_ENABLE_COCOS_HOOKS)
     include(FetchContent)
     set(DOBBY_DEBUG OFF CACHE BOOL "" FORCE)
