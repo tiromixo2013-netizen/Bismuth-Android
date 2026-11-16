@@ -1,0 +1,36 @@
+name: Fetch Skeletal Shenanigans benchmark
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fetch-skeletal-shenanigans.yml"
+      - "tools/gd-level-fetcher/fetch_level.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-level:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependency
+        run: python -m pip install requests
+      - name: Download public level
+        run: python tools/gd-level-fetcher/fetch_level.py
+      - name: Upload level artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skeletal-shenanigans-118509879
+          path: level-output/
+          if-no-files-found: warn
+          retention-days: 7
