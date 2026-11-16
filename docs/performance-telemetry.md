@@ -31,3 +31,20 @@ observer window rather than guaranteed per-display-frame statistics.
    disabled paths on the same device and level.
 
 No performance improvement is claimed from instrumentation alone.
+
+
+## Frame interval window (prepared API)
+
+A fixed-size, allocation-free 120-sample rolling window is available through
+`FrameIntervalWindow`. The native API
+`bismuth_observer_record_frame_start(handle, monotonic_ns)` accepts one
+monotonic frame-start timestamp and exposes sample count, last/mean interval,
+and nearest-rank p50/p95/p99 interval values through the telemetry snapshot.
+Non-monotonic timestamps are rejected.
+
+**Integration is not yet connected to a verified game frame boundary.** The
+current Cocos hook measures the duration of the original batch-draw call, not
+the complete frame. Do not feed batch-draw entry/exit timestamps as frame
+starts, and do not label these statistics as FPS until a reliable frame-start
+callback is integrated and tested. At present this API is testable with
+synthetic timestamps only.
