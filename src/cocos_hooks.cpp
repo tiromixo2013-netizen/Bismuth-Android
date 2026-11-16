@@ -310,6 +310,28 @@ void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* i
 }
 
 void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start) {
+    const bool bridgeEnabled = g_gpuDrawBridgeEnabled.load(std::memory_order_relaxed);
+    const bool telemetryEnabled = g_passiveTelemetryGate.enabled();
+
+    // The bridge is disabled by default. Avoid thread-local context bookkeeping
+    // on every atlas draw unless the experimental replacement path is enabled.
+    if (!bridgeEnabled) {
+        std::uint8_t dirtyBefore = 0;
+        if (telemetryEnabled && self)
+            std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
+                        sizeof(dirtyBefore));
+        if (g_originalDrawNumberOfQuads)
+            g_originalDrawNumberOfQuads(self, count, start);
+        // The target clears dirty after glBufferSubData. GL success cannot be
+        // checked without consuming the game's sticky error state.
+        if (dirtyBefore != 0 && count != 0) {
+            AtlasPassiveObserver* observer = acquireObserver();
+            if (observer) observer->invalidateQuadData();
+            releaseObserver();
+        }
+        return;
+    }
+
     const bool previousInside = g_insideAtlasDraw;
     void* previousAtlas = g_activeAtlasDraw;
     const unsigned int previousCount = g_activeAtlasCount;
@@ -319,7 +341,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     g_activeAtlasCount = count;
     g_activeAtlasStart = start;
     std::uint8_t dirtyBefore = 0;
-    if (g_passiveTelemetryGate.enabled() && self)
+    if (telemetryEnabled && self)
         std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
                     sizeof(dirtyBefore));
     if (g_originalDrawNumberOfQuads)
@@ -328,9 +350,6 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     g_activeAtlasDraw = previousAtlas;
     g_activeAtlasCount = previousCount;
     g_activeAtlasStart = previousStart;
-    // The target clears dirty after issuing glBufferSubData, but GL success is
-    // not observable without stealing the game's GL error state. Invalidate
-    // cached quad data conservatively; do not report a confirmed upload.
     if (dirtyBefore != 0 && count != 0) {
         AtlasPassiveObserver* observer = acquireObserver();
         if (observer) observer->invalidateQuadData();
