@@ -140,3 +140,25 @@ Galaxy M14 and Skeletal Shenanigans, with the same scene and thermal conditions.
 
 The current telemetry remains CPU-side observation and EGL buffer-submission
 cadence; it is not a GPU timer or display-presentation measurement.
+
+
+## Runtime telemetry gate (0.8.0)
+
+The C ABI exposes `bismuth_set_passive_telemetry_enabled(0|1)` and
+`bismuth_is_passive_telemetry_enabled()`. Passive telemetry is enabled by
+default so existing counters continue to work. A host/loader can turn it off
+for a lower-overhead comparison run, then turn it back on without reinstalling
+hooks or restarting the game.
+
+When disabled, passive Cocos hooks skip batch child-count reads, clock
+sampling, ATrace batch sections, dirty-byte inspection, and observer counter
+updates. The EGL swap hook forwards directly to the original function without
+taking a timestamp. The experimental GPU draw bridge is controlled separately
+and remains disabled by default.
+When the GPU bridge is disabled, the atlas draw hook also skips saving and restoring its thread-local bridge context; it forwards directly through the original atlas draw path while retaining only the dirty-byte observation when telemetry is enabled.
+
+This switch does **not** remove already-installed Dobby trampolines, so it is
+not a perfectly uninstrumented baseline: the pass-through detour cost remains.
+Use it to compare measurement-work overhead, not to claim zero-hook overhead.
+The switch uses a relaxed atomic flag and does not publish or guard observer
+memory; callers must still obey observer lifetime and render-thread rules.

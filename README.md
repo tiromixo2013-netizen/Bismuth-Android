@@ -29,7 +29,8 @@ Use Android NDK + CMake and set `-DBISMUTH_ENABLE_GLES31=ON`. The calling applic
 
 ## Important limitations
 
-- No Geometry Dash hooks, sprite-bound extraction, texture/material batching, or game integration yet.
+- Build-ID-gated passive Cocos hooks are available for the verified 2.2081 ARM64 target; they observe draw/atlas activity but do not replace the game's renderer.
+- No automatic sprite-bound extraction or production texture/material batching is integrated yet.
 - The current compute implementation supports up to 16,384 candidates per dispatch.
 - The generic indirect command is not yet wired into Geometry Dash's draw path.
 - GPU shaders have not yet been validated across real Android drivers.
@@ -83,3 +84,13 @@ The tool validates ELF64 little-endian AArch64 shared-library format and lists e
 dynamic symbols whose names mention the Cocos2d node, sprite, batch-node, or texture-atlas
 classes. A stripped library may not expose these names. Reported values are ELF symbol
 values, not runtime hook addresses, and do not establish that a function is safe to hook.
+
+
+## Passive telemetry control
+
+The passive hook measurements are enabled by default. Native loaders can use
+`bismuth_set_passive_telemetry_enabled(0)` to skip timing and observer work
+during a lower-overhead comparison, then restore it with `(1)`. This leaves
+the safety-checked pass-through hooks installed and does not alter the game's
+original rendering behavior. See
+[docs/performance-telemetry.md](docs/performance-telemetry.md) for details.

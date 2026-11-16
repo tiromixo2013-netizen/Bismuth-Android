@@ -4,6 +4,7 @@
 #include "bismuth/atlas_observation.hpp"
 #include "bismuth/capacity_growth.hpp"
 #include "bismuth/target_layout.hpp"
+#include "bismuth/telemetry_gate.hpp"
 #include <array>
 #include <cassert>
 #include <cstring>
@@ -12,6 +13,14 @@
 #include <vector>
 using namespace bismuth;
 int main() {
+    // Passive telemetry can be toggled without touching the original draw path.
+    TelemetryGate telemetryGate;
+    assert(telemetryGate.enabled());
+    telemetryGate.setEnabled(false);
+    assert(!telemetryGate.enabled());
+    telemetryGate.setEnabled(true);
+    assert(telemetryGate.enabled());
+
     // Geometric SSBO growth: preserve capacity, double gradually, and clamp.
     assert(nextWorkgroupCapacity(0u, 1u, 128u) == 1u);
     assert(nextWorkgroupCapacity(1u, 2u, 128u) == 2u);

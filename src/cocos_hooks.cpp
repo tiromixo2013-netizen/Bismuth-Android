@@ -1,5 +1,6 @@
 #include "bismuth/cocos_hooks.hpp"
 #include "bismuth/target_layout.hpp"
+#include "bismuth/telemetry_gate.hpp"
 
 #if defined(__ANDROID__) && defined(BISMUTH_ENABLE_COCOS_HOOKS)
 
@@ -76,6 +77,7 @@ GlDrawElementsFn g_originalGlDrawElements = nullptr;
 EglSwapBuffersFn g_originalEglSwapBuffers = nullptr;
 bool g_eglSwapBuffersHooked = false;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
+TelemetryGate g_passiveTelemetryGate{};
 thread_local void* g_activeAtlasDraw = nullptr;
 thread_local unsigned int g_activeAtlasCount = 0;
 thread_local unsigned int g_activeAtlasStart = 0;
@@ -195,6 +197,9 @@ void releaseObserver() noexcept {
 }
 
 EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
+    if (!g_passiveTelemetryGate.enabled())
+        return g_originalEglSwapBuffers
+            ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
     // This timestamp marks the app's EGL buffer-submission boundary, not the
     // physical display presentation time or GPU completion.
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -208,6 +213,10 @@ EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
 }
 
 void hookedBatchDraw(void* self) {
+    if (!g_passiveTelemetryGate.enabled()) {
+        if (g_originalBatchDraw) g_originalBatchDraw(self);
+        return;
+    }
     ScopedBismuthTrace trace("Bismuth/BatchDraw");
     // Read the target-verified child count before the original draw mutates no
     // layout state. This is a single bounded metadata read, not a child walk.
@@ -226,6 +235,7 @@ void hookedBatchDraw(void* self) {
 
 void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
     if (g_originalUpdateQuad) g_originalUpdateQuad(self, quad, index);
+    if (!g_passiveTelemetryGate.enabled()) return;
     AtlasPassiveObserver* observer = acquireObserver();
     if (observer) observer->recordQuadWrite(true);
     releaseObserver();
@@ -285,6 +295,10 @@ bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) 
 }
 
 void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices) {
+    if (!g_gpuDrawBridgeEnabled.load(std::memory_order_relaxed)) {
+        if (g_originalGlDrawElements) g_originalGlDrawElements(mode, count, type, indices);
+        return;
+    }
     if (g_insideAtlasDraw && g_activeAtlasDraw && mode == GL_TRIANGLES &&
         type == GL_UNSIGNED_SHORT && count >= 0 &&
         static_cast<unsigned int>(count) == g_activeAtlasCount * 6u &&
@@ -296,6 +310,28 @@ void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* i
 }
 
 void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start) {
+    const bool bridgeEnabled = g_gpuDrawBridgeEnabled.load(std::memory_order_relaxed);
+    const bool telemetryEnabled = g_passiveTelemetryGate.enabled();
+
+    // The bridge is disabled by default. Avoid thread-local context bookkeeping
+    // on every atlas draw unless the experimental replacement path is enabled.
+    if (!bridgeEnabled) {
+        std::uint8_t dirtyBefore = 0;
+        if (telemetryEnabled && self)
+            std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
+                        sizeof(dirtyBefore));
+        if (g_originalDrawNumberOfQuads)
+            g_originalDrawNumberOfQuads(self, count, start);
+        // The target clears dirty after glBufferSubData. GL success cannot be
+        // checked without consuming the game's sticky error state.
+        if (dirtyBefore != 0 && count != 0) {
+            AtlasPassiveObserver* observer = acquireObserver();
+            if (observer) observer->invalidateQuadData();
+            releaseObserver();
+        }
+        return;
+    }
+
     const bool previousInside = g_insideAtlasDraw;
     void* previousAtlas = g_activeAtlasDraw;
     const unsigned int previousCount = g_activeAtlasCount;
@@ -305,17 +341,15 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     g_activeAtlasCount = count;
     g_activeAtlasStart = start;
     std::uint8_t dirtyBefore = 0;
-    if (self) std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
-                          sizeof(dirtyBefore));
+    if (telemetryEnabled && self)
+        std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
+                    sizeof(dirtyBefore));
     if (g_originalDrawNumberOfQuads)
         g_originalDrawNumberOfQuads(self, count, start);
     g_insideAtlasDraw = previousInside;
     g_activeAtlasDraw = previousAtlas;
     g_activeAtlasCount = previousCount;
     g_activeAtlasStart = previousStart;
-    // The target clears dirty after issuing glBufferSubData, but GL success is
-    // not observable without stealing the game's GL error state. Invalidate
-    // cached quad data conservatively; do not report a confirmed upload.
     if (dirtyBefore != 0 && count != 0) {
         AtlasPassiveObserver* observer = acquireObserver();
         if (observer) observer->invalidateQuadData();
@@ -325,12 +359,14 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
 
 void hookedRemoveAllQuads(void* self) {
     if (g_originalRemoveAllQuads) g_originalRemoveAllQuads(self);
+    if (!g_passiveTelemetryGate.enabled()) return;
     AtlasPassiveObserver* observer = acquireObserver();
     if (observer) observer->recordStructuralMutation(true);
     releaseObserver();
 }
 
 void recordStructuralMutation() {
+    if (!g_passiveTelemetryGate.enabled()) return;
     AtlasPassiveObserver* observer = acquireObserver();
     if (observer) observer->recordStructuralMutation(true);
     releaseObserver();
@@ -370,6 +406,9 @@ void hookedIncreaseTotalQuads(void* self, unsigned int amount) {
 }
 
 bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
+    if (!g_passiveTelemetryGate.enabled())
+        return g_originalResizeCapacity
+            ? g_originalResizeCapacity(self, requestedCapacity) : false;
     std::uint32_t oldCapacity = 0;
     if (self) std::memcpy(&oldCapacity, static_cast<const std::uint8_t*>(self) + 0x50,
                           sizeof(oldCapacity));
@@ -603,6 +642,14 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     return true;
 }
 
+void setPassiveTelemetryEnabled(bool enabled) noexcept {
+    g_passiveTelemetryGate.setEnabled(enabled);
+}
+
+bool isPassiveTelemetryEnabled() noexcept {
+    return g_passiveTelemetryGate.enabled();
+}
+
 void setGpuDrawBridgeEnabled(bool enabled) noexcept {
     g_gpuDrawBridgeEnabled.store(enabled, std::memory_order_release);
 }
@@ -626,6 +673,8 @@ bool installCocosPassiveHooks(AtlasPassiveObserver*, std::string* error) {
     if (error) *error = "Cocos hooks are available only in the Android ARM64 build";
     return false;
 }
+void setPassiveTelemetryEnabled(bool) noexcept {}
+bool isPassiveTelemetryEnabled() noexcept { return false; }
 void setGpuDrawBridgeEnabled(bool) noexcept {}
 bool isGpuDrawBridgeEnabled() noexcept { return false; }
 void detachCocosPassiveHooks(AtlasPassiveObserver*) noexcept {}

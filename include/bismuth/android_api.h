@@ -20,7 +20,8 @@ enum BismuthCapability {
     BISMUTH_CAP_ATLAS_INDEX_OUTPUT = 1u << 2,
     BISMUTH_CAP_PASSIVE_OBSERVER_API = 1u << 3,
     BISMUTH_CAP_COCOS_PASSIVE_HOOKS = 1u << 4,
-    BISMUTH_CAP_GPU_DRAW_BRIDGE = 1u << 5
+    BISMUTH_CAP_GPU_DRAW_BRIDGE = 1u << 5,
+    BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL = 1u << 6
 };
 
 /* Bounds must be finite and normalized (left <= right, bottom <= top). Invalid bounds are culled. */
@@ -83,6 +84,10 @@ BISMUTH_API int bismuth_install_cocos_hooks(void* handle, char* error, uint32_t 
 /* Enable/disable the experimental all-visible GPU EBO bridge. Disabled by default. */
 BISMUTH_API void bismuth_set_gpu_draw_bridge_enabled(int enabled);
 BISMUTH_API int bismuth_is_gpu_draw_bridge_enabled(void);
+/* Disable/enable passive hook counters and timers for low-overhead A/B runs.
+ * This does not unpatch hooks; the original game functions always remain active. */
+BISMUTH_API void bismuth_set_passive_telemetry_enabled(int enabled);
+BISMUTH_API int bismuth_is_passive_telemetry_enabled(void);
 /* Automatic JNI_OnLoad hook status: 1=installed, -1=allocation failure, -2=validation/install failure, 0=not attempted. */
 BISMUTH_API int bismuth_auto_hook_status(void);
 BISMUTH_API const char* bismuth_auto_hook_error(void);

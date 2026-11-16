@@ -66,12 +66,13 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
     return JNI_VERSION_1_6;
 }
 extern "C" const char* bismuth_android_build_id() {
-    return "Bismuth-Android 0.7.0-performance-foundation";
+    return "Bismuth-Android 0.8.0-passive-telemetry-gate";
 }
 extern "C" std::uint32_t bismuth_android_capabilities() {
     return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
            BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API |
-           BISMUTH_CAP_COCOS_PASSIVE_HOOKS | BISMUTH_CAP_GPU_DRAW_BRIDGE;
+           BISMUTH_CAP_COCOS_PASSIVE_HOOKS | BISMUTH_CAP_GPU_DRAW_BRIDGE |
+           BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL;
 }
 extern "C" void* bismuth_create() {
     return new (std::nothrow) BismuthInstance{};
@@ -130,6 +131,12 @@ extern "C" void bismuth_set_gpu_draw_bridge_enabled(int enabled) {
 }
 extern "C" int bismuth_is_gpu_draw_bridge_enabled() {
     return bismuth::isGpuDrawBridgeEnabled() ? 1 : 0;
+}
+extern "C" void bismuth_set_passive_telemetry_enabled(int enabled) {
+    bismuth::setPassiveTelemetryEnabled(enabled != 0);
+}
+extern "C" int bismuth_is_passive_telemetry_enabled() {
+    return bismuth::isPassiveTelemetryEnabled() ? 1 : 0;
 }
 
 extern "C" int bismuth_auto_hook_status() {

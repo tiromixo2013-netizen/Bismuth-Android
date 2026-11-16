@@ -78,6 +78,8 @@ jobs:
           grep -q 'bismuth_observer_invalidate_unknown_mutation' exported-symbols.txt
           grep -q 'bismuth_observer_snapshot' exported-symbols.txt
           grep -q 'bismuth_install_cocos_hooks' exported-symbols.txt
+          grep -q 'bismuth_set_passive_telemetry_enabled' exported-symbols.txt
+          grep -q 'bismuth_is_passive_telemetry_enabled' exported-symbols.txt
           grep -q 'bismuth_auto_hook_status' exported-symbols.txt
           grep -q 'bismuth_auto_hook_error' exported-symbols.txt
           grep -q 'bismuth_destroy' exported-symbols.txt
