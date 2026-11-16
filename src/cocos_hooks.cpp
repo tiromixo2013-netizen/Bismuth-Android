@@ -1,6 +1,7 @@
 #include "bismuth/cocos_hooks.hpp"
 #include "bismuth/target_layout.hpp"
 #include "bismuth/telemetry_gate.hpp"
+#include "bismuth/observer_callback_guard.hpp"
 
 #if defined(__ANDROID__) && defined(BISMUTH_ENABLE_COCOS_HOOKS)
 
@@ -205,9 +206,7 @@ AtlasPassiveObserver* acquireObserver() noexcept {
 }
 
 void releaseObserver(AtlasPassiveObserver* observer) noexcept {
-    // A null acquisition did not increment g_activeCallbacks, so it must not
-    // decrement it. Keep the release operation explicitly paired with a token.
-    if (observer) g_activeCallbacks.fetch_sub(1, std::memory_order_release);
+    releaseObserverCallback(g_activeCallbacks, observer);
 }
 
 EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
