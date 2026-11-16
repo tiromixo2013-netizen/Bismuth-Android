@@ -198,7 +198,7 @@ bool readCurrentMvp(GLint program, GLfloat* matrix) {
 bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
     constexpr unsigned int kMaxBridgeQuads = 16384u;
     if (!atlas || !g_gpuDrawBridgeEnabled.load(std::memory_order_acquire) ||
-        !g_originalGlDrawElements || quadCount == 0 || quadCount > kMaxBridgeQuads)
+        !g_originalGlDrawElements || quadCount < 256u || quadCount > kMaxBridgeQuads)
         return false;
 
     std::uint32_t atlasCapacity = 0;
