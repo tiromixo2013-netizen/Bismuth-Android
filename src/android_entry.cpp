@@ -70,6 +70,9 @@ extern "C" std::uint32_t bismuth_indirect_command_buffer(void* handle) {
 extern "C" std::uint32_t bismuth_indexed_command_buffer(void* handle) {
     return handle ? static_cast<BismuthInstance*>(handle)->culler.indexedCommandBuffer() : 0u;
 }
+extern "C" std::uint32_t bismuth_atlas_element_index_buffer(void* handle) {
+    return handle ? static_cast<BismuthInstance*>(handle)->culler.atlasElementIndexBuffer() : 0u;
+}
 extern "C" void bismuth_destroy(void* handle) {
     // Call while the GLES context that owns this instance is current.
     delete static_cast<BismuthInstance*>(handle);
