@@ -85,6 +85,8 @@ thread_local bool g_insideAtlasDraw = false;
 std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
+std::mutex g_gpuHookMutex;
+bool g_gpuDrawHookInstalled = false;
 bool g_hooksInstalled = false;
 
 class ScopedBismuthTrace final {
@@ -405,6 +407,23 @@ void hookedIncreaseTotalQuads(void* self, unsigned int amount) {
     recordStructuralMutation();
 }
 
+bool ensureGpuDrawElementsHook() noexcept {
+    std::lock_guard<std::mutex> lock(g_gpuHookMutex);
+    if (g_gpuDrawHookInstalled && g_originalGlDrawElements) return true;
+
+    // The GLES detour is not part of passive observation. Install it only
+    // when the experimental bridge is explicitly requested.
+    if (!glDrawElements) return false;
+    if (DobbyHook(glDrawElements, reinterpret_cast<void*>(hookedGlDrawElements),
+                  reinterpret_cast<void**>(&g_originalGlDrawElements)) != 0 ||
+        !g_originalGlDrawElements) {
+        g_originalGlDrawElements = nullptr;
+        return false;
+    }
+    g_gpuDrawHookInstalled = true;
+    return true;
+}
+
 bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
     if (!g_passiveTelemetryGate.enabled())
         return g_originalResizeCapacity
@@ -479,20 +498,9 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         !symbolBelongsToTarget(removeQuadsAtIndex, module.path) ||
         !symbolBelongsToTarget(moveQuadsThree, module.path) ||
         !symbolBelongsToTarget(moveQuadsTwo, module.path) ||
-        !symbolBelongsToTarget(increaseTotalQuads, module.path) ||
-        !glDrawElements) {
+        !symbolBelongsToTarget(increaseTotalQuads, module.path)) {
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
-    }
-
-    if (!g_originalGlDrawElements) {
-        if (DobbyHook(glDrawElements, reinterpret_cast<void*>(hookedGlDrawElements),
-                      reinterpret_cast<void**>(&g_originalGlDrawElements)) != 0 ||
-            !g_originalGlDrawElements) {
-            g_originalGlDrawElements = nullptr;
-            if (error) *error = "Dobby failed to install the GLES glDrawElements bridge";
-            return false;
-        }
     }
 
     if (!g_updateQuadHooked) {
@@ -651,7 +659,16 @@ bool isPassiveTelemetryEnabled() noexcept {
 }
 
 void setGpuDrawBridgeEnabled(bool enabled) noexcept {
-    g_gpuDrawBridgeEnabled.store(enabled, std::memory_order_release);
+    if (!enabled) {
+        g_gpuDrawBridgeEnabled.store(false, std::memory_order_release);
+        return;
+    }
+    // Do not enable the bridge until its optional GLES detour is installed.
+    // Failure leaves the original Cocos/GLES path untouched.
+    if (ensureGpuDrawElementsHook())
+        g_gpuDrawBridgeEnabled.store(true, std::memory_order_release);
+    else
+        g_gpuDrawBridgeEnabled.store(false, std::memory_order_release);
 }
 
 bool isGpuDrawBridgeEnabled() noexcept {
