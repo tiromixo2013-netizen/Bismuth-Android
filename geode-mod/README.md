@@ -1,15 +1,20 @@
-# Bismuth Android — Geode package shell
+# Bismuth Android — Geode GPU bridge
 
-This is the first Geode-native Android package scaffold for Geometry Dash 2.2081 ARM64, targeting Geode v5.11.2.
+Android ARM64 Geode mod for Geometry Dash 2.2081, targeting Geode 5.11.2.
 
-## Current scope
+## Integrated in v0.2.0
 
-- Installable Geode mod structure and metadata.
-- Geode settings page with an ON/OFF preference and diagnostic logging toggle.
-- Android64 build workflow.
+- Geode settings page with an OFF-by-default GPU draw bridge toggle.
+- Build-ID-gated Cocos2d hooks for the verified Geometry Dash 2.2081 binary.
+- GLES 3.1 compute shaders linked directly into the Geode module.
+- Compute-generated 16-bit atlas element-index buffer and indirect indexed draw.
+- Original Cocos renderer remains the fallback whenever validation, initialization, upload, or dispatch fails.
+- Diagnostic logging for hook installation and bridge state.
 
-## Important limitation
+## Important limitations
 
-The ON/OFF setting currently stores and reports the user's preference only. The experimental Bismuth GLES/Cocos GPU draw bridge from the standalone native-library project is **not linked to this Geode module** and is not activated by the setting. No rendering optimization or FPS gain is claimed. This package is a settings/loader port scaffold, not the completed renderer mod.
+This is an experimental GPU draw-path integration, **not yet a completed GPU culling optimizer**. The current bridge deliberately marks all atlas quads visible because camera-space bounds and safe per-quad visibility extraction have not been calibrated. CPU still prepares and uploads the candidate records. Therefore this build demonstrates real GLES compute execution on supported draw calls, but it does not establish CPU offload savings or FPS improvement; it may be slower due to compute dispatch and buffer work.
 
-Build with the official Geode SDK using `geode build -p android64`.
+The bridge is disabled by default. It only attempts to hook the exact Cocos2d build ID embedded in src/cocos_hooks.cpp; unknown or mismatched game binaries are left untouched. Runtime stability and performance must be tested on the target phone before enabling it for normal play.
+
+Build with the official Geode SDK using geode build -p android64.
