@@ -16,7 +16,8 @@ extern "C" {
 
 enum BismuthCapability {
     BISMUTH_CAP_NATIVE_LIBRARY = 1u << 0,
-    BISMUTH_CAP_GLES31_COMPUTE = 1u << 1
+    BISMUTH_CAP_GLES31_COMPUTE = 1u << 1,
+    BISMUTH_CAP_ATLAS_INDEX_OUTPUT = 1u << 2
 };
 
 /* Bounds must be finite and normalized (left <= right, bottom <= top). Invalid bounds are culled. */
