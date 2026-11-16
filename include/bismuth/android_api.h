@@ -36,7 +36,7 @@ typedef struct BismuthCandidate {
     uint32_t pad2;
 } BismuthCandidate;
 
-/* Per-frame counters exported by the passive observer event API. */
+/* Observer-window counters. They are per-frame only when the caller resets them at a verified frame boundary. */
 typedef struct BismuthAtlasTelemetry {
     uint64_t batch_draw_calls;
     uint64_t batch_draw_cpu_ns_total;
@@ -91,6 +91,7 @@ BISMUTH_API const char* bismuth_auto_hook_error(void);
  * Passive observer event API. These functions record telemetry; the Cocos
  * hook adapter calls the relevant events after observing original engine calls.
  */
+/* Reset batch/atlas counters; call only at a verified frame boundary. */
 BISMUTH_API void bismuth_observer_begin_frame(void* handle);
 /* Feed one monotonic frame-start timestamp (nanoseconds); first call primes the window. */
 BISMUTH_API int bismuth_observer_record_frame_start(void* handle, uint64_t monotonic_ns);
