@@ -20,6 +20,7 @@ enum BismuthCapability {
     BISMUTH_CAP_ATLAS_INDEX_OUTPUT = 1u << 2,
     BISMUTH_CAP_PASSIVE_OBSERVER_API = 1u << 3,
     BISMUTH_CAP_COCOS_PASSIVE_HOOKS = 1u << 4,
+    /* Reserved: never reported while the renderer bridge is hard-locked. */
     BISMUTH_CAP_GPU_DRAW_BRIDGE = 1u << 5
 };
 
@@ -70,7 +71,7 @@ BISMUTH_API uint32_t bismuth_atlas_element_index_buffer(void* handle);
  * Returns 0 on success, -1 for invalid handle, or -2 on validation/install failure.
  */
 BISMUTH_API int bismuth_install_cocos_hooks(void* handle, char* error, uint32_t error_capacity);
-/* Enable/disable the experimental all-visible GPU EBO bridge. Disabled by default. */
+/* Compatibility stub: the GPU draw bridge is hard-locked OFF until renderer validation. */
 BISMUTH_API void bismuth_set_gpu_draw_bridge_enabled(int enabled);
 BISMUTH_API int bismuth_is_gpu_draw_bridge_enabled(void);
 /* Automatic JNI_OnLoad hook status: 1=installed, -1=allocation failure, -2=validation/install failure, 0=not attempted. */
