@@ -158,6 +158,8 @@ extern "C" int bismuth_observer_snapshot(void* handle, BismuthAtlasTelemetry* te
     const auto* instance = static_cast<const BismuthInstance*>(handle);
     const auto counters = instance->observer.snapshot();
     telemetry->batch_draw_calls = counters.batchDrawCalls;
+    telemetry->batch_draw_cpu_ns_total = counters.batchDrawCpuNsTotal;
+    telemetry->batch_draw_cpu_ns_max = counters.batchDrawCpuNsMax;
     telemetry->sprite_transform_calls = counters.spriteTransformCalls;
     telemetry->unknown_transform_overrides = counters.unknownTransformOverrides;
     telemetry->quad_writes = counters.quadWrites;
