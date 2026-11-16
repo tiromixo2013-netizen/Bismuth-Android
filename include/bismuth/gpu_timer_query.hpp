@@ -1,6 +1,5 @@
 #pragma once
 
-#include <GLES3/gl31.h>
 #include <atomic>
 #include <cstdint>
 
@@ -28,13 +27,13 @@ public:
     GpuTimingSnapshot snapshot() const noexcept;
 
 private:
-    using GenQueriesFn = void (*)(GLsizei, GLuint*);
-    using DeleteQueriesFn = void (*)(GLsizei, const GLuint*);
-    using BeginQueryFn = void (*)(GLenum, GLuint);
-    using GetQueryivFn = void (*)(GLenum, GLenum, GLint*);
-    using EndQueryFn = void (*)(GLenum);
-    using GetQueryObjectuivFn = void (*)(GLuint, GLenum, GLuint*);
-    using GetQueryObjectui64vFn = void (*)(GLuint, GLenum, GLuint64*);
+    using GenQueriesFn = void (*)(std::int32_t, std::uint32_t*);
+    using DeleteQueriesFn = void (*)(std::int32_t, const std::uint32_t*);
+    using BeginQueryFn = void (*)(std::uint32_t, std::uint32_t);
+    using GetQueryivFn = void (*)(std::uint32_t, std::uint32_t, std::int32_t*);
+    using EndQueryFn = void (*)(std::uint32_t);
+    using GetQueryObjectuivFn = void (*)(std::uint32_t, std::uint32_t, std::uint32_t*);
+    using GetQueryObjectui64vFn = void (*)(std::uint32_t, std::uint32_t, std::uint64_t*);
 
     static constexpr std::uint32_t kQueryCount = 4;
     static constexpr std::uint32_t kWindowSize = 120;
@@ -48,7 +47,7 @@ private:
     EndQueryFn endQuery_ = nullptr;
     GetQueryObjectuivFn getQueryObjectuiv_ = nullptr;
     GetQueryObjectui64vFn getQueryObjectui64v_ = nullptr;
-    GLuint queries_[kQueryCount]{};
+    std::uint32_t queries_[kQueryCount]{};
     bool pending_[kQueryCount]{};
     bool discardPending_[kQueryCount]{};
     bool initialized_ = false;
