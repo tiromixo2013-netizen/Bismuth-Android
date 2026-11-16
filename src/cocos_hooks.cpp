@@ -210,8 +210,8 @@ EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
         const auto monotonicNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
         if (monotonicNs > 0)
             observer->recordFrameStart(static_cast<std::uint64_t>(monotonicNs));
-        releaseObserver();
     }
+    releaseObserver();
     return g_originalEglSwapBuffers
         ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
 }
@@ -225,6 +225,7 @@ void hookedBatchDraw(void* self) {
     AtlasPassiveObserver* observer = acquireObserver();
     if (!observer) {
         if (g_originalBatchDraw) g_originalBatchDraw(self);
+        releaseObserver();
         return;
     }
 
