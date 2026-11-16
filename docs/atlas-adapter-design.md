@@ -64,9 +64,11 @@ buffer (count = visibleSlotCount * 6, one instance when non-empty, zero
 first-index/base-vertex/base-instance). The original four-word arrays command
 remains separate and unchanged. The compacted EBO and command are now prepared
 as GPU outputs; this project still does not issue an indexed indirect atlas
-draw. The required GLES indirect-draw entry point/extension must be detected
-on the target, and the engine's VAO, EBO, texture, blend, stencil and shader
-state must be integrated safely first.
+draw. GLES 3.1 provides glDrawElementsIndirect as a core command; no optional
+indirect-draw extension is required once the context is confirmed as ES 3.1.
+The fifth command word is reserved and must remain zero (not baseInstance).
+The engine's VAO, EBO, texture, blend, stencil and shader state must still be
+integrated safely before using the draw path.
 
 ## Why a separate indexed path is required
 
