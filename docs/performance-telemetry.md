@@ -51,6 +51,17 @@ callback is integrated and tested. At present this API is testable with
 synthetic timestamps only.
 
 
+## Sprite transform-call observation
+
+The verified target exports `CCSprite::updateTransform()`. The passive hook now
+forwards to the original method first, then increments
+`sprite_transform_calls` when passive telemetry is enabled. It records calls
+that reach this base implementation; virtual overrides that replace the base
+method entirely are not counted, so this is a lower-bound observation rather
+than a complete count of every child transform dispatch. The hook does not skip,
+modify, or defer any transform work. It is intended to quantify the CPU-side
+per-child transform cost before attempting any visibility optimization.
+
 ## Verified batch child-count observation
 
 The batch-draw hook now samples the child-array count before calling the original
