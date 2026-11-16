@@ -1,6 +1,27 @@
 #pragma once
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include "bismuth/culling_types.hpp"
+// Geode's Android CCGL compatibility header remaps GLES VAO entry points to
+// OES extension symbols. GLES 3.1 declares the core entry points, so remove
+// those legacy aliases in this translation unit before including gl31.h.
+#ifdef glBindVertexArray
+#undef glBindVertexArray
+#endif
+#ifdef glDeleteVertexArrays
+#undef glDeleteVertexArrays
+#endif
+#ifdef glGenVertexArrays
+#undef glGenVertexArrays
+#endif
+#ifdef glBindVertexArrayOES
+#undef glBindVertexArrayOES
+#endif
+#ifdef glDeleteVertexArraysOES
+#undef glDeleteVertexArraysOES
+#endif
+#ifdef glGenVertexArraysOES
+#undef glGenVertexArraysOES
+#endif
 #include <GLES3/gl31.h>
 #include <string>
 namespace bismuth {
