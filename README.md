@@ -1,10 +1,10 @@
 # Bismuth-Android
 
-Experimental Android-native GPU visibility-culling prototype for Geometry Dash 2.2081 ARM64.
+Android ARM64 Geode mod for Geometry Dash 2.2081, with a native GLES 3.1 renderer-research backend.
 
 The project explores a GPU-assisted path for classifying sprite bounds, compacting visible indices in stable submission order, and preparing an indirect-draw command using OpenGL ES 3.1 compute shaders. It is a clean-room implementation of general rendering concepts; it does not copy Bismuth PC source code.
 
-> **Status: prototype only.** This is not an installable Geometry Dash mod and is not yet integrated with the game's renderer. No Android device performance claim is made.
+> **Status: installable Geode package is being integrated.** The native renderer remains in prototype/observer status; the original Cocos renderer is preserved, and no Android device performance gain is claimed until the target-device test passes.
 
 ## What exists
 
@@ -64,12 +64,13 @@ The CI suite compiles this header as C as well as C++, so ABI declarations remai
 from a future Android loader or JNI bridge.
 
 
-## Android APK loader helper
+## Geode Android64 package
 
-See [docs/android-loader.md](docs/android-loader.md) for the ARM64 APK loading preparation
-and the limitations of the current bootstrap. The helper script validates and copies
-`libbismuth.so` and patches the Geometry Dash Smali library-load call; it does not rebuild
-or sign the APK and it does not activate renderer hooks.
+The installable mod package lives in [geode-mod](geode-mod/README.md) and is built by
+[the Geode Android64 workflow](.github/workflows/geode-android64.yml). The resulting
+`.geode` artifact is intended to be installed through Geode; no APK patching, resigning,
+or root access is required. The package adds the Bismuth settings entry to both gameplay
+Pause and Editor Pause. The GPU draw bridge remains disabled pending device validation.
 
 ## Inspect the exact target game library
 
