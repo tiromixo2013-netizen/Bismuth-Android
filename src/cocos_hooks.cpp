@@ -179,55 +179,15 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
 }
 
 bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
-    constexpr unsigned int kMaxBridgeQuads = 16384u;
-    if (!atlas || !g_gpuDrawBridgeEnabled.load(std::memory_order_acquire) ||
-        !g_originalGlDrawElements || quadCount == 0 || quadCount > kMaxBridgeQuads)
-        return false;
-    std::uint32_t atlasCapacity = 0;
-    std::uint32_t usedQuads = 0;
-    std::memcpy(&atlasCapacity, static_cast<const std::uint8_t*>(atlas) + 0x50, sizeof(atlasCapacity));
-    std::memcpy(&usedQuads, static_cast<const std::uint8_t*>(atlas) + 0x4c, sizeof(usedQuads));
-    if (atlasCapacity == 0 || atlasCapacity > kMaxBridgeQuads ||
-        start > usedQuads || quadCount > usedQuads - start ||
-        start > atlasCapacity || quadCount > atlasCapacity - start)
-        return false;
-
-    // First integration stage: all quads are kept visible. This validates the
-    // generated EBO/indirect draw while camera-space bounds remain uncalibrated.
-    static Gles31Culler* culler = new (std::nothrow) Gles31Culler();
-    if (!culler) return false;
-    static bool initializationAttempted = false;
-    static bool initializationSucceeded = false;
-    if (!initializationAttempted) {
-        initializationAttempted = true;
-        initializationSucceeded = culler->initialize(nullptr);
-    }
-    if (!initializationSucceeded || !culler->isInitialized()) return false;
-
-    thread_local std::vector<Candidate> candidates;
-    candidates.resize(quadCount);
-    const float limit = std::numeric_limits<float>::max();
-    for (unsigned int i = 0; i < quadCount; ++i) {
-        Candidate& candidate = candidates[i];
-        candidate.bounds = Bounds{-limit, -limit, limit, limit};
-        candidate.payload = start + i;
-        candidate.pad0 = candidate.pad1 = candidate.pad2 = 0;
-    }
-    const Rect fullView{-limit, -limit, limit, limit};
-    if (!culler->uploadCandidates(candidates, atlasCapacity, nullptr) ||
-        !culler->dispatch(fullView, quadCount, nullptr))
-        return false;
-
-    GLint previousElementBuffer = 0;
-    GLint previousIndirectBuffer = 0;
-    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &previousElementBuffer);
-    glGetIntegerv(GL_DRAW_INDIRECT_BUFFER_BINDING, &previousIndirectBuffer);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, culler->atlasElementIndexBuffer());
-    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, culler->indexedCommandBuffer());
-    glDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_SHORT, nullptr);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLuint>(previousElementBuffer));
-    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, static_cast<GLuint>(previousIndirectBuffer));
-    return true;
+    // Safety interlock: the current prototype does not yet extract calibrated
+    // per-quad bounds in the game's clip-space. Sending synthetic full-screen
+    // bounds through a replacement EBO is not a valid culling implementation
+    // and can alter rendering on some drivers. Keep the original Cocos draw
+    // path until real bounds, atlas layout, and device runtime tests are proven.
+    (void)atlas;
+    (void)quadCount;
+    (void)start;
+    return false;
 }
 
 void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices) {
