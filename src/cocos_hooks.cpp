@@ -7,6 +7,9 @@
 #include <dlfcn.h>
 #include "bismuth/gles31_culler.hpp"
 #include <GLES3/gl31.h>
+#if defined(BISMUTH_ENABLE_ATRACE)
+#include <android/trace.h>
+#endif
 #include <link.h>
 #include <elf.h>
 
@@ -77,6 +80,27 @@ std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
 bool g_hooksInstalled = false;
+
+class ScopedBismuthTrace final {
+public:
+    explicit ScopedBismuthTrace(const char* name) noexcept {
+#if defined(BISMUTH_ENABLE_ATRACE)
+        enabled_ = ATrace_isEnabled() != 0;
+        if (enabled_) ATrace_beginSection(name);
+#else
+        (void)name;
+#endif
+    }
+    ~ScopedBismuthTrace() {
+#if defined(BISMUTH_ENABLE_ATRACE)
+        if (enabled_) ATrace_endSection();
+#endif
+    }
+    ScopedBismuthTrace(const ScopedBismuthTrace&) = delete;
+    ScopedBismuthTrace& operator=(const ScopedBismuthTrace&) = delete;
+private:
+    bool enabled_ = false;
+};
 bool g_updateQuadHooked = false;
 bool g_drawNumberOfQuadsHooked = false;
 bool g_batchDrawHooked = false;
@@ -167,6 +191,7 @@ void releaseObserver() noexcept {
 }
 
 void hookedBatchDraw(void* self) {
+    ScopedBismuthTrace trace("Bismuth/BatchDraw");
     // Read the target-verified child count before the original draw mutates no
     // layout state. This is a single bounded metadata read, not a child walk.
     std::uint32_t childCount = 0;
@@ -190,6 +215,7 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
 }
 
 bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
+    ScopedBismuthTrace trace("Bismuth/GPUBridge");
     constexpr unsigned int kMaxBridgeQuads = 16384u;
     if (!atlas || !g_gpuDrawBridgeEnabled.load(std::memory_order_acquire) ||
         !g_originalGlDrawElements || quadCount == 0 || quadCount > kMaxBridgeQuads)
