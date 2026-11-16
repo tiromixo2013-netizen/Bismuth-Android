@@ -10,6 +10,7 @@ namespace bismuth {
 namespace {
 constexpr GLenum kTimeElapsedExt = 0x88BF;
 constexpr GLenum kQueryResultExt = 0x8866;
+constexpr GLenum kCurrentQueryExt = 0x8865;
 constexpr GLenum kQueryResultAvailableExt = 0x8867;
 constexpr GLenum kGpuDisjointExt = 0x8FBB;
 
@@ -37,10 +38,11 @@ bool GlesGpuTimerQuery::loadFunctions() noexcept {
     genQueries_ = loadProc<GenQueriesFn>("glGenQueriesEXT");
     deleteQueries_ = loadProc<DeleteQueriesFn>("glDeleteQueriesEXT");
     beginQuery_ = loadProc<BeginQueryFn>("glBeginQueryEXT");
+    getQueryiv_ = loadProc<GetQueryivFn>("glGetQueryivEXT");
     endQuery_ = loadProc<EndQueryFn>("glEndQueryEXT");
     getQueryObjectuiv_ = loadProc<GetQueryObjectuivFn>("glGetQueryObjectuivEXT");
     getQueryObjectui64v_ = loadProc<GetQueryObjectui64vFn>("glGetQueryObjectui64vEXT");
-    return genQueries_ && deleteQueries_ && beginQuery_ && endQuery_ &&
+    return genQueries_ && deleteQueries_ && beginQuery_ && getQueryiv_ && endQuery_ &&
            getQueryObjectuiv_ && getQueryObjectui64v_;
 }
 
@@ -64,6 +66,12 @@ bool GlesGpuTimerQuery::initialize() noexcept {
 
 bool GlesGpuTimerQuery::begin() noexcept {
     if (!initialize() || active_) return false;
+    GLint currentQuery = 0;
+    getQueryiv_(kTimeElapsedExt, kCurrentQueryExt, &currentQuery);
+    if (currentQuery != 0) {
+        skippedSamples_.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
     for (std::uint32_t attempt = 0; attempt < kQueryCount; ++attempt) {
         const std::uint32_t slot = (nextSlot_ + attempt) % kQueryCount;
         if (pending_[slot]) continue;
