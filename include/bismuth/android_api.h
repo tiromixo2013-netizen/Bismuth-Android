@@ -49,6 +49,7 @@ typedef struct BismuthAtlasTelemetry {
     uint64_t dirty_uploads;
     uint64_t uploaded_quads;
     uint32_t max_children_in_batch;
+    uint32_t reserved0; /* ABI padding matching AtlasObservationSnapshot alignment. */
     uint32_t frame_interval_sample_count;
     uint64_t frame_interval_last_ns;
     uint64_t frame_interval_mean_ns;
