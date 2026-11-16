@@ -5,7 +5,7 @@ The passive observer now records the CPU wall-clock duration of the original
 
 ## Exported fields
 
-- `batch_draw_calls`: number of observed batch-draw calls in the current frame.
+- `batch_draw_calls`: number of observed batch-draw calls in the current observer window. It becomes a per-frame count only when `bismuth_observer_begin_frame()` is called at a verified frame boundary.
 - `batch_draw_cpu_ns_total`: sum of measured CPU wall-clock nanoseconds across those calls.
 - `batch_draw_cpu_ns_max`: longest individual observed batch-draw call in nanoseconds.
 - `batch_draw_children_total`: sum of child-array entries observed across batch-draw calls; divide by `batch_draw_calls` for the average batch size when the count is nonzero.
@@ -19,9 +19,9 @@ presentation time, or end-to-end frame time.
 
 The timer uses `std::chrono::steady_clock` and adds no GL calls, readback,
 allocation, or synchronization to the render hook. The values reset when
-`bismuth_observer_begin_frame()` is called. Until a verified frame-boundary
-hook calls that function, the observer values are cumulative within the current
-observer window rather than guaranteed per-display-frame statistics.
+`bismuth_observer_begin_frame()` is called. The current hook does not yet call
+that function at a verified frame boundary, so the observer values are cumulative
+within the current observer window rather than guaranteed per-display-frame statistics.
 
 ## Next instrumentation stages
 
