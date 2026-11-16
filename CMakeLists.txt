@@ -41,9 +41,27 @@ if(ANDROID AND BISMUTH_ENABLE_GLES31)
   target_link_libraries(bismuth_gles31 PUBLIC bismuth_core GLESv3)
 
   # Bootstrap library only; no game renderer hook is installed yet.
+  if(BISMUTH_ENABLE_COCOS_HOOKS)
+    include(FetchContent)
+    set(DOBBY_DEBUG OFF CACHE BOOL "" FORCE)
+    set(DOBBY_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+    set(DOBBY_BUILD_TEST OFF CACHE BOOL "" FORCE)
+    set(Plugin.SymbolResolver OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(dobby
+      GIT_REPOSITORY https://github.com/jmpews/Dobby.git
+      GIT_TAG 5dfc8546954ce3b3198132ab13fddb89ee92cdd7
+      GIT_SHALLOW FALSE)
+    FetchContent_MakeAvailable(dobby)
+  endif()
+
   add_library(bismuth_mod SHARED src/android_entry.cpp)
   target_compile_features(bismuth_mod PRIVATE cxx_std_17)
   target_compile_definitions(bismuth_mod PRIVATE BISMUTH_ANDROID_GLES31=1)
+  if(BISMUTH_ENABLE_COCOS_HOOKS)
+    target_sources(bismuth_mod PRIVATE src/cocos_hooks.cpp)
+    target_compile_definitions(bismuth_mod PRIVATE BISMUTH_ENABLE_COCOS_HOOKS=1)
+    target_link_libraries(bismuth_mod PRIVATE dobby_static dl)
+  endif()
   target_link_libraries(bismuth_mod PRIVATE bismuth_gles31 bismuth_core log)
   set_target_properties(bismuth_mod PROPERTIES OUTPUT_NAME "bismuth")
 endif()
