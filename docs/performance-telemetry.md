@@ -8,6 +8,7 @@ The passive observer now records the CPU wall-clock duration of the original
 - `batch_draw_calls`: number of observed batch-draw calls in the current frame.
 - `batch_draw_cpu_ns_total`: sum of measured CPU wall-clock nanoseconds across those calls.
 - `batch_draw_cpu_ns_max`: longest individual observed batch-draw call in nanoseconds.
+- `batch_draw_children_total`: sum of child-array entries observed across batch-draw calls; divide by `batch_draw_calls` for the average batch size when the count is nonzero.
 - Existing atlas counters continue to report transform-related writes, structural
   mutations, and dirty-upload observations.
 
