@@ -1,0 +1,20 @@
+name: Build Bismuth Geode Android64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - geode-android-port
+  pull_request:
+
+jobs:
+  build:
+    name: Android64 Geode package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Geode mod
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          directory: geode-mod
+          target: Android64
