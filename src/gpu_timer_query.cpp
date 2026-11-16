@@ -4,6 +4,7 @@
 #include <EGL/egl.h>
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 
 namespace bismuth {
 namespace {
