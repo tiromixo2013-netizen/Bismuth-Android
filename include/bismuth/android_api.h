@@ -41,6 +41,7 @@ typedef struct BismuthAtlasTelemetry {
     uint64_t batch_draw_calls;
     uint64_t batch_draw_cpu_ns_total;
     uint64_t batch_draw_cpu_ns_max;
+    uint64_t batch_draw_children_total;
     uint64_t sprite_transform_calls;
     uint64_t unknown_transform_overrides;
     uint64_t quad_writes;
