@@ -65,6 +65,15 @@ void bufferData(GLuint id, GLsizeiptr bytes) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, id);
     glBufferData(GL_SHADER_STORAGE_BUFFER, bytes, nullptr, GL_DYNAMIC_DRAW);
 }
+
+// Best-effort fail-closed command reset. ScopedComputeState restores the
+// generic SSBO binding after this helper returns.
+bool clearIndirectCommand(GLuint commandBuffer) {
+    const GLuint emptyCommand[4] = {6u, 0u, 0u, 0u};
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, commandBuffer);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(emptyCommand), emptyCommand);
+    return glGetError() == GL_NO_ERROR;
+}
 }
 
 Gles31Culler::~Gles31Culler() { reset(); }
@@ -193,17 +202,22 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         return false;
     }
     ScopedComputeState state;
+    const auto failClosed = [&](const char* message) {
+        uploadedCount_ = 0;
+        const bool cleared = clearIndirectCommand(indirectCommand_);
+        if (error) {
+            *error = message;
+            if (!cleared) *error += "; failed to clear the previous indirect command";
+        }
+        return false;
+    };
     if (!std::isfinite(view.left) || !std::isfinite(view.bottom) ||
         !std::isfinite(view.right) || !std::isfinite(view.top) ||
         view.left > view.right || view.bottom > view.top) {
-        if (error) *error = "View rectangle must contain finite, non-inverted bounds";
-        return false;
+        return failClosed("View rectangle must contain finite, non-inverted bounds");
     }
     if (count == 0) {
-        const GLuint emptyCommand[4] = {6u, 0u, 0u, 0u};
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirectCommand_);
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(emptyCommand), emptyCommand);
-        if (glGetError() != GL_NO_ERROR) {
+        if (!clearIndirectCommand(indirectCommand_)) {
             if (error) *error = "Failed to clear the empty indirect draw command";
             return false;
         }
@@ -211,8 +225,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         return true;
     }
     if (!classifyProgram_ || count > capacity_ || count != uploadedCount_) {
-        if (error) *error = "Culler is uninitialized or candidate count does not match the latest upload";
-        return false;
+        return failClosed("Culler is uninitialized or candidate count does not match the latest upload");
     }
     const GLuint groups = (count + kWorkgroupSize - 1u) / kWorkgroupSize;
     glUseProgram(classifyProgram_);
@@ -240,8 +253,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glDispatchCompute(groups, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
     if (glGetError() != GL_NO_ERROR) {
-        if (error) *error = "GLES compute dispatch failed";
-        return false;
+        return failClosed("GLES compute dispatch failed");
     }
     return true;
 }
