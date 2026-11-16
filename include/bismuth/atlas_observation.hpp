@@ -14,6 +14,7 @@ struct AtlasObservationSnapshot {
     // CPU wall time spent inside the original batch-draw call; not GPU execution time.
     std::uint64_t batchDrawCpuNsTotal = 0;
     std::uint64_t batchDrawCpuNsMax = 0;
+    std::uint64_t batchDrawChildrenTotal = 0;
     std::uint64_t spriteTransformCalls = 0;
     std::uint64_t unknownTransformOverrides = 0;
     std::uint64_t quadWrites = 0;
@@ -31,6 +32,7 @@ public:
     void recordBatchDraw(std::uint32_t childCount, std::uint64_t cpuDurationNs = 0) noexcept {
         ++current_.batchDrawCalls;
         current_.batchDrawCpuNsTotal += cpuDurationNs;
+        current_.batchDrawChildrenTotal += childCount;
         if (cpuDurationNs > current_.batchDrawCpuNsMax)
             current_.batchDrawCpuNsMax = cpuDurationNs;
         if (childCount > current_.maxChildrenInBatch)
