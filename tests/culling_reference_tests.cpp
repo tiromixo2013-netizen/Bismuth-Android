@@ -118,6 +118,28 @@ int main() {
     const AtlasObservationSnapshot cleared = observation.snapshot();
     assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u &&
            cleared.batchDrawCpuNsTotal == 0u && cleared.batchDrawCpuNsMax == 0u);
+    // Frame interval window: deterministic monotonic timestamps, bounded rolling
+    // samples, nearest-rank percentiles, and rejection of backwards time.
+    FrameIntervalWindow frameWindow;
+    assert(frameWindow.recordFrameStart(1000000000ull));
+    assert(frameWindow.snapshot().sampleCount == 0u);
+    assert(frameWindow.recordFrameStart(1016000000ull));
+    assert(frameWindow.recordFrameStart(1033000000ull));
+    assert(frameWindow.recordFrameStart(1050000000ull));
+    assert(!frameWindow.recordFrameStart(1049000000ull));
+    const auto frameStats = frameWindow.snapshot();
+    assert(frameStats.sampleCount == 3u);
+    assert(frameStats.lastIntervalNs == 17000000ull);
+    assert(frameStats.meanIntervalNs == 16666666ull);
+    assert(frameStats.p50IntervalNs == 17000000ull);
+    assert(frameStats.p95IntervalNs == 17000000ull);
+    assert(frameStats.p99IntervalNs == 17000000ull);
+    frameWindow.reset();
+    assert(frameWindow.snapshot().sampleCount == 0u);
+    AtlasPassiveObserver frameObserver;
+    assert(frameObserver.recordFrameStart(500u));
+    assert(frameObserver.recordFrameStart(16500500u));
+    assert(frameObserver.snapshot().frameIntervals.sampleCount == 1u);
     AtlasPassiveObserver passive;
     const AtlasRevision passiveStart = passive.revision();
     passive.recordQuadWrite(false); // failed original operation: no invalidation
