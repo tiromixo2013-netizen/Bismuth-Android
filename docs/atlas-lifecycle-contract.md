@@ -91,6 +91,16 @@ snapshot. The counters are render-thread-owned and intentionally do not use
 atomics or allocate memory; a future hook must confirm all callbacks execute
 on the same render thread before using this class.
 
+## Passive event facade
+
+`include/bismuth/atlas_observation.hpp` also provides `AtlasPassiveObserver`,
+a render-thread-owned facade that combines the revision tracker with telemetry.
+Mutation callbacks accept an explicit success flag: failed original operations
+do not advance revisions. An unclassified or ambiguous mutation calls
+`invalidateUnknownMutation()`, which conservatively advances the structural
+revision and invalidates cached slot maps. This remains a host-side contract;
+it does not install hooks or infer that an engine operation succeeded.
+
 These counters are not connected to the game. They define what to measure
 without changing engine behavior. In particular, an unknown virtual override
 must be counted and left on the original path rather than treated as the base
