@@ -1,21 +1,32 @@
 # Bismuth-Android
 
-Experimental Android-native GPU visibility-culling prototype for Geometry Dash 2.2081 ARM64.
+Experimental Android ARM64 Geode mod and GLES 3.1 compute-culling research project for Geometry Dash 2.2081.
 
-The project explores a GPU-assisted path for classifying sprite bounds, compacting visible indices in stable submission order, and preparing an indirect-draw command using OpenGL ES 3.1 compute shaders. It is a clean-room implementation of general rendering concepts; it does not copy Bismuth PC source code.
+> **Current status: safe observer/prototype build.** The Geode package compiles, but the GPU draw bridge is hard-locked OFF. The original Cocos renderer remains active. No GPU culling integration, CPU offload, FPS gain, or stable release is claimed.
 
-> **Status: prototype only.** This is not an installable Geometry Dash mod and is not yet integrated with the game's renderer. No Android device performance claim is made.
+## Implemented
 
-## What exists
+- Geode Android64 package and native C ABI.
+- Build-ID-gated passive Cocos2d atlas lifecycle hooks for the inspected target binary.
+- CPU reference culler with stable input ordering.
+- GLES 3.1 compute backend: classify, workgroup scan, group offsets, stable scatter, and atlas element-index generation.
+- 16-bit atlas EBO pattern matching the inspected 2.2081 target binary.
+- Fail-closed command handling, SSBO binding-range preservation, and host-side tests.
+- Conservative quad-to-NDC bounds helper for caller-supplied transformed vertices and a verified column-major MVP matrix. Unsafe projection fails open to the full view.
+- Duplicate atlas-slot candidate rejection before compute upload.
+- CI checks for host tests, shader validation, Android ARM64 native compilation, and Geode packaging.
 
-- Portable CPU reference culler with stable input ordering.
-- Optional Android GLES 3.1 compute backend.
-- Three compute stages: classify + per-workgroup scan, group offsets, stable scatter.
-- Embedded GPU shaders are generated directly from `shaders/*.comp` during CMake configuration.
-- No CPU readback or `glFinish` in the compute dispatch path.
-- Host-side unit tests and GitHub Actions CI.
+## What is deliberately not active
 
-## Build host reference tests
+- The live game renderer does not yet supply calibrated per-quad positions/bounds to the compute backend.
+- No sprite transform calls are skipped.
+- No original atlas draw call is replaced and no generated EBO is submitted by Geometry Dash.
+- The GPU draw bridge cannot be enabled through the native API or Geode setting.
+- GLES compute execution and visual correctness have not been validated on the target phone/GPU.
+
+## Build and test
+
+Host reference tests:
 
 ```bash
 cmake -S . -B build -DBISMUTH_BUILD_TESTS=ON
@@ -23,63 +34,16 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-## Android build
+Android backend: build with Android NDK and `BISMUTH_ENABLE_GLES31=ON`. The owning GLES 3.1 context must be current for initialization, dispatch, reset, and destruction.
 
-Use Android NDK + CMake and set `-DBISMUTH_ENABLE_GLES31=ON`. The calling application must create and own an active GLES 3.1 context before initializing `Gles31Culler`.
+Geode Android64 packaging is performed by the repository's GitHub Actions workflow. A successful package build verifies compilation and packaging only; it does not prove runtime safety or performance.
 
-## Important limitations
+## Remaining work before a stable GPU-optimized release
 
-- No Geometry Dash hooks, sprite-bound extraction, texture/material batching, or game integration yet.
-- The current compute implementation supports up to 16,384 candidates per dispatch.
-- The generic indirect command is not yet wired into Geometry Dash's draw path.
-- GPU shaders have not yet been validated across real Android drivers.
-- No FPS or latency improvement is claimed until on-device A/B profiling is complete.
+1. Establish a safe, measured source of the exact four transformed vertices for each eligible quad.
+2. Validate the actual per-frame MVP/viewport mapping and conservative clip-space bounds on the target device.
+3. Map all transform invalidation, atlas slot reordering, subclass behavior, and unsupported sprite cases.
+4. Prototype a gated draw adapter that preserves the original VBO, vertex attributes, VAO, texture, blend, alpha, stencil/scissor, shader, and painter order; retain CPU fallback.
+5. Run visual regression and crash testing on the target phone, then profile CPU/GPU frame times, p50/p95/p99, power, and thermals against the unmodified renderer.
 
-See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work.
-
-## Native shared-library API (bootstrap)
-
-The Android build now exports a small C ABI from `libbismuth.so`: `bismuth_create`,
-`bismuth_initialize`, `bismuth_upload`, `bismuth_dispatch`, buffer-handle getters,
-and `bismuth_destroy`. Create and call the instance only on a thread with the owning
-GLES 3.1 context current. The caller supplies conservative candidate bounds in the
-renderer submission order. The visible-index and indirect-command buffer handles are
-for integration code to consume; this library does not yet issue Geometry Dash draw calls.
-
-This API makes the culling backend callable from native integration code, but it is
-still not a Geometry Dash hook or installable mod package.
-
-
-## Android C integration header
-
-Native consumers can include `bismuth/android_api.h` without depending on C++ headers.
-`BismuthCandidate` is a fixed 32-byte C struct matching the compute shader's std430 record. `BISMUTH_MAX_CANDIDATES` exposes the current 16,384-record per-dispatch ceiling; oversized C uploads are rejected before temporary allocation.
-The capability bits describe what was compiled into the library; they do not mean that a
-GLES context exists or that the culler has initialized. Call `bismuth_initialize` only
-on the render thread while the intended GLES 3.1 context is current, then check
-`bismuth_is_initialized`. The owning context must also be current when destroying an instance.
-
-The CI suite compiles this header as C as well as C++, so ABI declarations remain usable
-from a future Android loader or JNI bridge.
-
-
-## Android APK loader helper
-
-See [docs/android-loader.md](docs/android-loader.md) for the ARM64 APK loading preparation
-and the limitations of the current bootstrap. The helper script validates and copies
-`libbismuth.so` and patches the Geometry Dash Smali library-load call; it does not rebuild
-or sign the APK and it does not activate renderer hooks.
-
-## Inspect the exact target game library
-
-Before attempting renderer hooks, inspect the `libcocos2dcpp.so` extracted from
-the user's exact Geometry Dash 2.2081 ARM64 APK:
-
-```bash
-python3 tools/inspect_target_elf.py /path/to/libcocos2dcpp.so
-```
-
-The tool validates ELF64 little-endian AArch64 shared-library format and lists exported
-dynamic symbols whose names mention the Cocos2d node, sprite, batch-node, or texture-atlas
-classes. A stripped library may not expose these names. Reported values are ELF symbol
-values, not runtime hook addresses, and do not establish that a function is safe to hook.
+See [docs/renderer-integration.md](docs/renderer-integration.md) for the binary analysis and integration blockers, and [geode-mod/README.md](geode-mod/README.md) for the package-specific status.
