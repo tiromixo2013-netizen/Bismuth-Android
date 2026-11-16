@@ -392,3 +392,43 @@ virtual calls. It also does not establish that quad slots remain stable during
 child sorting, insertion/removal, atlas capacity growth, or animation. The
 first practical prototype should remain observation-only and should measure
 these lifecycle events before attempting a compacted EBO or changing a draw.
+
+
+### Atlas slot stability check: insert, move, remove, and resize
+
+The target's atlas mutation routines were inspected after the EBO pattern was
+resolved. They show that atlas slot numbers are **not stable** across structural
+updates:
+
+- `insertQuad()` and `insertQuads()` shift existing 96-byte quad records with
+  `memmove` when inserting before the current end, then copy the new quad data
+  into the insertion slot and set the atlas dirty byte.
+- `insertQuadFromIndex()` moves a quad record from one slot to another by
+  copying the source record, shifting the intervening records, and writing the
+  saved record at the destination. It also sets the dirty byte.
+- `removeQuadAtIndex()` and `removeQuadsAtIndex()` compact the remaining
+  quad records after removal; `removeAllQuads()` resets the atlas quad count.
+- `moveQuadsFromIndex()` uses a temporary copy plus `memmove` to reorder a
+  range of 96-byte records and marks the atlas dirty.
+- `resizeCapacity()` reallocates the CPU quad and index arrays. On successful
+  resize it calls `setupIndices()` again and remaps/reuploads the GL buffers,
+  then marks the atlas dirty.
+
+The static EBO pattern remains a regular sequence based on each slot's current
+position, so the original EBO itself does not encode sprite identity. A compacted
+visibility EBO can only be correct if its source indices are regenerated or
+updated after every slot insertion, removal, move, and capacity change—or if
+the adapter reads the current slot mapping each frame. A cache keyed only by a
+sprite's former atlas index would become stale after these operations.
+
+### Revised safe integration direction
+
+The static analysis now confirms both halves of the atlas contract:
+(1) each slot uses four consecutive vertices and a fixed six-index pattern;
+(2) the quad records occupying those slots can move during ordinary atlas
+mutation operations. This makes a separate visible-index stream technically
+plausible, but it also makes slot-map invalidation mandatory. The next work is
+to trace the corresponding `CCSpriteBatchNode` child/atlas-index updates and
+sort paths, then define an observation-only event log for slot changes and
+per-child transform calls. No draw replacement or transform bypass is justified
+yet.
