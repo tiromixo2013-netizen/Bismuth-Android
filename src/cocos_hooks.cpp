@@ -21,18 +21,26 @@ constexpr char kTargetLibrary[] = "libcocos2dcpp.so";
 constexpr char kExpectedBuildId[] = "ca621323d54c1d94f5f13a2778ce9c8baa31b9a8";
 constexpr char kBatchDrawSymbol[] = "_ZN7cocos2d17CCSpriteBatchNode4drawEv";
 constexpr char kUpdateQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10updateQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
+constexpr char kRemoveAllQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas14removeAllQuadsEv";
+constexpr char kResizeCapacitySymbol[] = "_ZN7cocos2d14CCTextureAtlas14resizeCapacityEj";
 
 using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
+using RemoveAllQuadsFn = void (*)(void*);
+using ResizeCapacityFn = bool (*)(void*, unsigned int);
 
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
+RemoveAllQuadsFn g_originalRemoveAllQuads = nullptr;
+ResizeCapacityFn g_originalResizeCapacity = nullptr;
 std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
 bool g_hooksInstalled = false;
 bool g_updateQuadHooked = false;
 bool g_batchDrawHooked = false;
+bool g_removeAllQuadsHooked = false;
+bool g_resizeCapacityHooked = false;
 
 const char* basenameOf(const char* path) {
     if (!path) return "";
@@ -123,6 +131,29 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
     releaseObserver();
 }
 
+void hookedRemoveAllQuads(void* self) {
+    if (g_originalRemoveAllQuads) g_originalRemoveAllQuads(self);
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) observer->recordStructuralMutation(true);
+    releaseObserver();
+}
+
+bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
+    std::uint32_t oldCapacity = 0;
+    if (self) std::memcpy(&oldCapacity, static_cast<const std::uint8_t*>(self) + 0x50,
+                          sizeof(oldCapacity));
+    const bool result = g_originalResizeCapacity
+        ? g_originalResizeCapacity(self, requestedCapacity) : false;
+    // A failed allocation can partially tear down atlas storage. Invalidate
+    // whenever a different capacity was requested, even if result is false.
+    if (oldCapacity != requestedCapacity) {
+        AtlasPassiveObserver* observer = acquireObserver();
+        if (observer) observer->recordStructuralMutation(true);
+        releaseObserver();
+    }
+    return result;
+}
+
 } // namespace
 
 bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error) {
@@ -154,8 +185,12 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
 
     void* batchDraw = dlsym(RTLD_DEFAULT, kBatchDrawSymbol);
     void* updateQuad = dlsym(RTLD_DEFAULT, kUpdateQuadSymbol);
+    void* removeAllQuads = dlsym(RTLD_DEFAULT, kRemoveAllQuadsSymbol);
+    void* resizeCapacity = dlsym(RTLD_DEFAULT, kResizeCapacitySymbol);
     if (!symbolBelongsToTarget(batchDraw, module.path) ||
-        !symbolBelongsToTarget(updateQuad, module.path)) {
+        !symbolBelongsToTarget(updateQuad, module.path) ||
+        !symbolBelongsToTarget(removeAllQuads, module.path) ||
+        !symbolBelongsToTarget(resizeCapacity, module.path)) {
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
     }
@@ -186,6 +221,28 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_batchDrawHooked = true;
+    }
+
+    if (!g_removeAllQuadsHooked) {
+        if (DobbyHook(removeAllQuads, reinterpret_cast<void*>(hookedRemoveAllQuads),
+                      reinterpret_cast<void**>(&g_originalRemoveAllQuads)) != 0 ||
+            !g_originalRemoveAllQuads) {
+            g_originalRemoveAllQuads = nullptr;
+            if (error) *error = "Dobby failed to install the CCTextureAtlas::removeAllQuads observer";
+            return false;
+        }
+        g_removeAllQuadsHooked = true;
+    }
+
+    if (!g_resizeCapacityHooked) {
+        if (DobbyHook(resizeCapacity, reinterpret_cast<void*>(hookedResizeCapacity),
+                      reinterpret_cast<void**>(&g_originalResizeCapacity)) != 0 ||
+            !g_originalResizeCapacity) {
+            g_originalResizeCapacity = nullptr;
+            if (error) *error = "Dobby failed to install the CCTextureAtlas::resizeCapacity observer";
+            return false;
+        }
+        g_resizeCapacityHooked = true;
     }
 
     g_observer.store(observer, std::memory_order_release);
