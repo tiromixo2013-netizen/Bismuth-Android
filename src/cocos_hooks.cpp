@@ -340,7 +340,8 @@ void callOriginalAtlasDraw(void* self, unsigned int count, unsigned int start) {
         g_gpuTimerQuery.poll();
         queryStarted = g_originalDrawNumberOfQuads && g_gpuTimerQuery.begin();
     }
-    callOriginalAtlasDraw(self, count, start);
+    if (g_originalDrawNumberOfQuads)
+        g_originalDrawNumberOfQuads(self, count, start);
     if (queryStarted) g_gpuTimerQuery.end();
 }
 
@@ -378,8 +379,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     if (telemetryEnabled && self && count != 0)
         std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
                     sizeof(dirtyBefore));
-    if (g_originalDrawNumberOfQuads)
-        g_originalDrawNumberOfQuads(self, count, start);
+    callOriginalAtlasDraw(self, count, start);
     g_insideAtlasDraw = previousInside;
     g_activeAtlasDraw = previousAtlas;
     g_activeAtlasCount = previousCount;
