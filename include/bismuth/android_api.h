@@ -64,10 +64,15 @@ BISMUTH_API uint32_t bismuth_indexed_command_buffer(void* handle);
 BISMUTH_API uint32_t bismuth_atlas_element_index_buffer(void* handle);
 
 /*
- * Passive observer event API for a future external hook adapter.
- * These functions only record events; they do NOT install hooks or inspect
- * Geometry Dash memory. Call success-sensitive events only after the
- * corresponding original engine operation has returned successfully.
+ * Install passive Cocos2d hooks for the exact supported Geometry Dash binary.
+ * Call after libcocos2dcpp.so is loaded and before its render path starts.
+ * Returns 0 on success, -1 for invalid handle, or -2 on validation/install failure.
+ */
+BISMUTH_API int bismuth_install_cocos_hooks(void* handle, char* error, uint32_t error_capacity);
+
+/*
+ * Passive observer event API. These functions record telemetry; the Cocos
+ * hook adapter calls the relevant events after observing original engine calls.
  */
 BISMUTH_API void bismuth_observer_begin_frame(void* handle);
 BISMUTH_API void bismuth_observer_record_batch_draw(void* handle, uint32_t child_count);
