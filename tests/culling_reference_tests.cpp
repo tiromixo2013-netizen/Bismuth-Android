@@ -2,7 +2,10 @@
 #include "bismuth/atlas_indices.hpp"
 #include "bismuth/atlas_lifecycle.hpp"
 #include "bismuth/atlas_observation.hpp"
+#include "bismuth/target_layout.hpp"
+#include <array>
 #include <cassert>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <vector>
@@ -93,6 +96,27 @@ int main() {
     const AtlasRevision afterStructure = revisions.snapshot();
     assert(revisions.slotMappingCurrent(afterStructure));
     assert(revisions.quadDataCurrent(afterStructure));
+    // Verified target layout reader: count metadata is sampled without a
+    // per-child traversal, and invalid/null layouts fail closed.
+    std::array<std::uint8_t, bismuth::target_layout::kBatchNodeChildrenArrayOffset + sizeof(void*)> fakeBatch{};
+    std::array<std::uint8_t, bismuth::target_layout::kArrayCountOffset + sizeof(std::uint32_t)> fakeChildren{};
+    const void* fakeChildrenPointer = fakeChildren.data();
+    std::memcpy(fakeBatch.data() + bismuth::target_layout::kBatchNodeChildrenArrayOffset,
+                &fakeChildrenPointer, sizeof(fakeChildrenPointer));
+    const std::uint32_t fakeChildCount = 321u;
+    std::memcpy(fakeChildren.data() + bismuth::target_layout::kArrayCountOffset,
+                &fakeChildCount, sizeof(fakeChildCount));
+    std::uint32_t observedChildren = 0;
+    assert(bismuth::target_layout::readBatchChildCount(fakeBatch.data(), observedChildren));
+    assert(observedChildren == fakeChildCount);
+    assert(!bismuth::target_layout::readBatchChildCount(nullptr, observedChildren));
+    assert(observedChildren == 0u);
+    const std::uint32_t impossibleChildCount =
+        bismuth::target_layout::kMaxObservedBatchChildren + 1u;
+    std::memcpy(fakeChildren.data() + bismuth::target_layout::kArrayCountOffset,
+                &impossibleChildCount, sizeof(impossibleChildCount));
+    assert(!bismuth::target_layout::readBatchChildCount(fakeBatch.data(), observedChildren));
+
     // Passive per-frame telemetry is allocation-free and resets at frame start.
     AtlasObservationCounters observation;
     observation.beginFrame();
