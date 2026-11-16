@@ -17,7 +17,8 @@ extern "C" {
 enum BismuthCapability {
     BISMUTH_CAP_NATIVE_LIBRARY = 1u << 0,
     BISMUTH_CAP_GLES31_COMPUTE = 1u << 1,
-    BISMUTH_CAP_ATLAS_INDEX_OUTPUT = 1u << 2
+    BISMUTH_CAP_ATLAS_INDEX_OUTPUT = 1u << 2,
+    BISMUTH_CAP_PASSIVE_OBSERVER_API = 1u << 3
 };
 
 /* Bounds must be finite and normalized (left <= right, bottom <= top). Invalid bounds are culled. */
@@ -32,6 +33,18 @@ typedef struct BismuthCandidate {
     uint32_t pad1;
     uint32_t pad2;
 } BismuthCandidate;
+
+/* Per-frame counters exported by the passive observer event API. */
+typedef struct BismuthAtlasTelemetry {
+    uint64_t batch_draw_calls;
+    uint64_t sprite_transform_calls;
+    uint64_t unknown_transform_overrides;
+    uint64_t quad_writes;
+    uint64_t structural_mutations;
+    uint64_t dirty_uploads;
+    uint64_t uploaded_quads;
+    uint32_t max_children_in_batch;
+} BismuthAtlasTelemetry;
 
 BISMUTH_API const char* bismuth_android_build_id(void);
 BISMUTH_API uint32_t bismuth_android_capabilities(void);
@@ -48,6 +61,23 @@ BISMUTH_API uint32_t bismuth_indirect_command_buffer(void* handle);
 BISMUTH_API uint32_t bismuth_indexed_command_buffer(void* handle);
 /* Packed 16-bit atlas EBO indices in stable visible-slot order; bind as GL_ELEMENT_ARRAY_BUFFER. */
 BISMUTH_API uint32_t bismuth_atlas_element_index_buffer(void* handle);
+
+/*
+ * Passive observer event API for a future external hook adapter.
+ * These functions only record events; they do NOT install hooks or inspect
+ * Geometry Dash memory. Call success-sensitive events only after the
+ * corresponding original engine operation has returned successfully.
+ */
+BISMUTH_API void bismuth_observer_begin_frame(void* handle);
+BISMUTH_API void bismuth_observer_record_batch_draw(void* handle, uint32_t child_count);
+BISMUTH_API void bismuth_observer_record_sprite_transform(void* handle, int known_base_implementation);
+BISMUTH_API void bismuth_observer_record_quad_write(void* handle, int original_call_succeeded);
+BISMUTH_API void bismuth_observer_record_structural_mutation(void* handle, int original_call_succeeded);
+BISMUTH_API void bismuth_observer_record_dirty_upload(void* handle, int original_upload_succeeded, uint32_t quad_count);
+BISMUTH_API void bismuth_observer_invalidate_unknown_mutation(void* handle);
+BISMUTH_API int bismuth_observer_snapshot(void* handle, BismuthAtlasTelemetry* telemetry,
+                                          uint64_t* slots_revision, uint64_t* content_revision);
+
 /* Destroy while the GLES context that created this instance is current. */
 BISMUTH_API void bismuth_destroy(void* handle);
 
