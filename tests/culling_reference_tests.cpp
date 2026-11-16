@@ -2,6 +2,7 @@
 #include "bismuth/atlas_indices.hpp"
 #include "bismuth/atlas_lifecycle.hpp"
 #include "bismuth/atlas_observation.hpp"
+#include "bismuth/clip_bounds.hpp"
 #include <cassert>
 #include <iostream>
 #include <limits>
@@ -44,6 +45,29 @@ int main() {
     assert((validOnly.visibleIndices == std::vector<std::uint32_t>{2}));
     auto invalidView = cullStable(candidates, Rect{nan, 0, 100, 100});
     assert(invalidView.visibleIndices.empty());
+
+    // Conservative quad projection: identity MVP maps supplied vertices to NDC.
+    const ClipMatrix4 identityMvp = {
+        1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1
+    };
+    const std::array<QuadPosition3, 4> quad = {{
+        {-0.5f, -0.25f, 0.0f}, {0.5f, -0.25f, 0.0f},
+        {0.5f, 0.75f, 0.0f}, {-0.5f, 0.75f, 0.0f}
+    }};
+    const Bounds projected = conservativeQuadClipBounds(quad, identityMvp);
+    assert(projected.left == -0.5f && projected.right == 0.5f);
+    assert(projected.bottom == -0.25f && projected.top == 0.75f);
+    // A perspective vertex on/behind the eye plane must fail open (full view).
+    ClipMatrix4 perspectiveMvp = identityMvp;
+    perspectiveMvp[15] = 0.0f;
+    const Bounds unsafeProjection = conservativeQuadClipBounds(quad, perspectiveMvp);
+    assert(unsafeProjection.left == -1.0f && unsafeProjection.bottom == -1.0f &&
+           unsafeProjection.right == 1.0f && unsafeProjection.top == 1.0f);
+    // Invalid source positions also fail open instead of causing false culls.
+    auto invalidQuad = quad;
+    invalidQuad[2].x = std::numeric_limits<float>::quiet_NaN();
+    const Bounds invalidProjection = conservativeQuadClipBounds(invalidQuad, identityMvp);
+    assert(invalidProjection.left == -1.0f && invalidProjection.right == 1.0f);
 
     // Target-verified 2.2081 atlas EBO pattern, preserving slot order.
     std::vector<std::uint16_t> elements;
