@@ -56,6 +56,15 @@ inline Bounds conservativeQuadClipBounds(
         if (ndcY < result.bottom) result.bottom = ndcY;
         if (ndcY > result.top) result.top = ndcY;
     }
+    // Expand each edge by one representable float so rounding during the
+    // perspective divide cannot make the rectangle narrower and falsely cull
+    // geometry exactly on a boundary.
+    const float negInf = -std::numeric_limits<float>::infinity();
+    const float posInf = std::numeric_limits<float>::infinity();
+    result.left = std::nextafter(result.left, negInf);
+    result.bottom = std::nextafter(result.bottom, negInf);
+    result.right = std::nextafter(result.right, posInf);
+    result.top = std::nextafter(result.top, posInf);
     return result;
 }
 
