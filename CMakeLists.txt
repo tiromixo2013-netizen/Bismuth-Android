@@ -3,6 +3,7 @@ project(BismuthAndroid VERSION 0.1.0 LANGUAGES C CXX)
 option(BISMUTH_BUILD_TESTS "Build host-side reference tests" ON)
 option(BISMUTH_ENABLE_GLES31 "Build the Android OpenGL ES 3.1 backend" OFF)
 option(BISMUTH_ENABLE_COCOS_HOOKS "Build the build-ID-gated passive Cocos2d hook adapter" ON)
+option(BISMUTH_ENABLE_ATRACE "Add optional Android ATrace sections for Perfetto profiling" OFF)
 
 # Generate embedded shaders from the authoritative shader files.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -63,7 +64,11 @@ if(ANDROID AND BISMUTH_ENABLE_GLES31)
     target_compile_definitions(bismuth_mod PRIVATE BISMUTH_ENABLE_COCOS_HOOKS=1)
     target_link_libraries(bismuth_mod PRIVATE dobby dl)
   endif()
-  target_link_libraries(bismuth_mod PRIVATE bismuth_gles31 bismuth_core log)
+  if(BISMUTH_ENABLE_ATRACE)
+    target_compile_definitions(bismuth_mod PRIVATE BISMUTH_ENABLE_ATRACE=1)
+    target_link_libraries(bismuth_mod PRIVATE android)
+  endif()
+  target_link_libraries(bismuth_mod PRIVATE bismuth_gles31 bismuth_core log EGL)
   set_target_properties(bismuth_mod PROPERTIES OUTPUT_NAME "bismuth")
 endif()
 

@@ -2,7 +2,10 @@
 #include "bismuth/atlas_indices.hpp"
 #include "bismuth/atlas_lifecycle.hpp"
 #include "bismuth/atlas_observation.hpp"
+#include "bismuth/target_layout.hpp"
+#include <array>
 #include <cassert>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <vector>
@@ -93,11 +96,32 @@ int main() {
     const AtlasRevision afterStructure = revisions.snapshot();
     assert(revisions.slotMappingCurrent(afterStructure));
     assert(revisions.quadDataCurrent(afterStructure));
+    // Verified target layout reader: count metadata is sampled without a
+    // per-child traversal, and invalid/null layouts fail closed.
+    std::array<std::uint8_t, bismuth::target_layout::kBatchNodeChildrenArrayOffset + sizeof(void*)> fakeBatch{};
+    std::array<std::uint8_t, bismuth::target_layout::kArrayCountOffset + sizeof(std::uint32_t)> fakeChildren{};
+    const void* fakeChildrenPointer = fakeChildren.data();
+    std::memcpy(fakeBatch.data() + bismuth::target_layout::kBatchNodeChildrenArrayOffset,
+                &fakeChildrenPointer, sizeof(fakeChildrenPointer));
+    const std::uint32_t fakeChildCount = 321u;
+    std::memcpy(fakeChildren.data() + bismuth::target_layout::kArrayCountOffset,
+                &fakeChildCount, sizeof(fakeChildCount));
+    std::uint32_t observedChildren = 0;
+    assert(bismuth::target_layout::readBatchChildCount(fakeBatch.data(), observedChildren));
+    assert(observedChildren == fakeChildCount);
+    assert(!bismuth::target_layout::readBatchChildCount(nullptr, observedChildren));
+    assert(observedChildren == 0u);
+    const std::uint32_t impossibleChildCount =
+        bismuth::target_layout::kMaxObservedBatchChildren + 1u;
+    std::memcpy(fakeChildren.data() + bismuth::target_layout::kArrayCountOffset,
+                &impossibleChildCount, sizeof(impossibleChildCount));
+    assert(!bismuth::target_layout::readBatchChildCount(fakeBatch.data(), observedChildren));
+
     // Passive per-frame telemetry is allocation-free and resets at frame start.
     AtlasObservationCounters observation;
     observation.beginFrame();
-    observation.recordBatchDraw(12u);
-    observation.recordBatchDraw(20u);
+    observation.recordBatchDraw(12u, 1200u);
+    observation.recordBatchDraw(20u, 2300u);
     observation.recordSpriteTransform(true);
     observation.recordSpriteTransform(false);
     observation.recordQuadWrite();
@@ -105,6 +129,9 @@ int main() {
     observation.recordDirtyUpload(32u);
     const AtlasObservationSnapshot observed = observation.snapshot();
     assert(observed.batchDrawCalls == 2u);
+    assert(observed.batchDrawCpuNsTotal == 3500u);
+    assert(observed.batchDrawCpuNsMax == 2300u);
+    assert(observed.batchDrawChildrenTotal == 32u);
     assert(observed.spriteTransformCalls == 2u);
     assert(observed.unknownTransformOverrides == 1u);
     assert(observed.quadWrites == 1u);
@@ -114,7 +141,42 @@ int main() {
     assert(observed.maxChildrenInBatch == 20u);
     observation.beginFrame();
     const AtlasObservationSnapshot cleared = observation.snapshot();
-    assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u);
+    assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u &&
+           cleared.batchDrawCpuNsTotal == 0u && cleared.batchDrawCpuNsMax == 0u &&
+           cleared.batchDrawChildrenTotal == 0u);
+    // Frame interval window: deterministic monotonic timestamps, bounded rolling
+    // samples, nearest-rank percentiles, and rejection of backwards time.
+    FrameIntervalWindow frameWindow;
+    assert(frameWindow.recordFrameStart(1000000000ull));
+    assert(frameWindow.snapshot().sampleCount == 0u);
+    assert(frameWindow.recordFrameStart(1016000000ull));
+    assert(frameWindow.recordFrameStart(1033000000ull));
+    assert(frameWindow.recordFrameStart(1050000000ull));
+    assert(!frameWindow.recordFrameStart(1049000000ull));
+    const auto frameStats = frameWindow.snapshot();
+    assert(frameStats.sampleCount == 3u);
+    assert(frameStats.lastIntervalNs == 17000000ull);
+    assert(frameStats.meanIntervalNs == 16666666ull);
+    assert(frameStats.p50IntervalNs == 17000000ull);
+    assert(frameStats.p95IntervalNs == 17000000ull);
+    assert(frameStats.p99IntervalNs == 17000000ull);
+    frameWindow.reset();
+    assert(frameWindow.snapshot().sampleCount == 0u);
+    // The rolling window remains bounded and drops the oldest interval.
+    assert(frameWindow.recordFrameStart(0u));
+    for (std::uint64_t i = 1u; i <= FrameIntervalWindow::kWindowSize + 1u; ++i)
+        assert(frameWindow.recordFrameStart(i * 1000000ull));
+    const auto rolledStats = frameWindow.snapshot();
+    assert(rolledStats.sampleCount == FrameIntervalWindow::kWindowSize);
+    assert(rolledStats.lastIntervalNs == 1000000ull);
+    assert(rolledStats.meanIntervalNs == 1000000ull);
+    assert(rolledStats.p50IntervalNs == 1000000ull);
+    assert(rolledStats.p95IntervalNs == 1000000ull);
+    assert(rolledStats.p99IntervalNs == 1000000ull);
+    AtlasPassiveObserver frameObserver;
+    assert(frameObserver.recordFrameStart(500u));
+    assert(frameObserver.recordFrameStart(16500500u));
+    assert(frameObserver.snapshot().frameIntervals.sampleCount == 1u);
     AtlasPassiveObserver passive;
     const AtlasRevision passiveStart = passive.revision();
     passive.recordQuadWrite(false); // failed original operation: no invalidation

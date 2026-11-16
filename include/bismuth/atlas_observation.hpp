@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include "bismuth/atlas_lifecycle.hpp"
+#include "bismuth/frame_interval_window.hpp"
 
 namespace bismuth {
 
@@ -10,6 +11,10 @@ namespace bismuth {
 // engine operation; this class does not install hooks or touch GL/game memory.
 struct AtlasObservationSnapshot {
     std::uint64_t batchDrawCalls = 0;
+    // CPU wall time spent inside the original batch-draw call; not GPU execution time.
+    std::uint64_t batchDrawCpuNsTotal = 0;
+    std::uint64_t batchDrawCpuNsMax = 0;
+    std::uint64_t batchDrawChildrenTotal = 0;
     std::uint64_t spriteTransformCalls = 0;
     std::uint64_t unknownTransformOverrides = 0;
     std::uint64_t quadWrites = 0;
@@ -17,14 +22,19 @@ struct AtlasObservationSnapshot {
     std::uint64_t dirtyUploads = 0;
     std::uint64_t uploadedQuads = 0;
     std::uint32_t maxChildrenInBatch = 0;
+    FrameIntervalSnapshot frameIntervals{};
 };
 
 class AtlasObservationCounters {
 public:
     void beginFrame() noexcept { current_ = {}; }
 
-    void recordBatchDraw(std::uint32_t childCount) noexcept {
+    void recordBatchDraw(std::uint32_t childCount, std::uint64_t cpuDurationNs = 0) noexcept {
         ++current_.batchDrawCalls;
+        current_.batchDrawCpuNsTotal += cpuDurationNs;
+        current_.batchDrawChildrenTotal += childCount;
+        if (cpuDurationNs > current_.batchDrawCpuNsMax)
+            current_.batchDrawCpuNsMax = cpuDurationNs;
         if (childCount > current_.maxChildrenInBatch)
             current_.maxChildrenInBatch = childCount;
     }
@@ -59,8 +69,11 @@ private:
 class AtlasPassiveObserver {
 public:
     void beginFrame() noexcept { counters_.beginFrame(); }
-    void recordBatchDraw(std::uint32_t childCount) noexcept {
-        counters_.recordBatchDraw(childCount);
+    bool recordFrameStart(std::uint64_t monotonicNs) noexcept {
+        return frameIntervals_.recordFrameStart(monotonicNs);
+    }
+    void recordBatchDraw(std::uint32_t childCount, std::uint64_t cpuDurationNs = 0) noexcept {
+        counters_.recordBatchDraw(childCount, cpuDurationNs);
     }
     void recordSpriteTransform(bool knownBaseImplementation) noexcept {
         counters_.recordSpriteTransform(knownBaseImplementation);
@@ -88,7 +101,11 @@ public:
         revisions_.recordStructuralMutation();
         counters_.recordStructuralMutation();
     }
-    AtlasObservationSnapshot snapshot() const noexcept { return counters_.snapshot(); }
+    AtlasObservationSnapshot snapshot() const noexcept {
+        AtlasObservationSnapshot result = counters_.snapshot();
+        result.frameIntervals = frameIntervals_.snapshot();
+        return result;
+    }
     AtlasRevision revision() const noexcept { return revisions_.snapshot(); }
     bool slotMappingCurrent(AtlasRevision saved) const noexcept {
         return revisions_.slotMappingCurrent(saved);
@@ -99,6 +116,7 @@ public:
 private:
     AtlasRevisionTracker revisions_{};
     AtlasObservationCounters counters_{};
+    FrameIntervalWindow frameIntervals_{};
 };
 
 } // namespace bismuth

@@ -35,7 +35,7 @@ Use Android NDK + CMake and set `-DBISMUTH_ENABLE_GLES31=ON`. The calling applic
 - GPU shaders have not yet been validated across real Android drivers.
 - No FPS or latency improvement is claimed until on-device A/B profiling is complete.
 
-See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work.
+See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work. See [docs/performance-telemetry.md](docs/performance-telemetry.md) for the first CPU timing counters and their limitations.
 
 ## Native shared-library API (bootstrap)
 

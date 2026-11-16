@@ -1,4 +1,5 @@
 #include "bismuth/cocos_hooks.hpp"
+#include "bismuth/target_layout.hpp"
 
 #if defined(__ANDROID__) && defined(BISMUTH_ENABLE_COCOS_HOOKS)
 
@@ -6,6 +7,10 @@
 #include <dlfcn.h>
 #include "bismuth/gles31_culler.hpp"
 #include <GLES3/gl31.h>
+#include <EGL/egl.h>
+#if defined(BISMUTH_ENABLE_ATRACE)
+#include <android/trace.h>
+#endif
 #include <link.h>
 #include <elf.h>
 
@@ -18,6 +23,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <chrono>
 
 namespace bismuth {
 namespace {
@@ -51,6 +57,7 @@ using OneIndexFn = void (*)(void*, unsigned int);
 using ThreeIndexFn = void (*)(void*, unsigned int, unsigned int, unsigned int);
 using IncreaseQuadsFn = void (*)(void*, unsigned int);
 using GlDrawElementsFn = void (*)(GLenum, GLsizei, GLenum, const void*);
+using EglSwapBuffersFn = EGLBoolean (*)(EGLDisplay, EGLSurface);
 
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
@@ -66,6 +73,8 @@ ThreeIndexFn g_originalMoveQuadsThree = nullptr;
 TwoIndexFn g_originalMoveQuadsTwo = nullptr;
 IncreaseQuadsFn g_originalIncreaseTotalQuads = nullptr;
 GlDrawElementsFn g_originalGlDrawElements = nullptr;
+EglSwapBuffersFn g_originalEglSwapBuffers = nullptr;
+bool g_eglSwapBuffersHooked = false;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
 thread_local void* g_activeAtlasDraw = nullptr;
 thread_local unsigned int g_activeAtlasCount = 0;
@@ -75,6 +84,27 @@ std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
 bool g_hooksInstalled = false;
+
+class ScopedBismuthTrace final {
+public:
+    explicit ScopedBismuthTrace(const char* name) noexcept {
+#if defined(BISMUTH_ENABLE_ATRACE)
+        enabled_ = ATrace_isEnabled() != 0;
+        if (enabled_) ATrace_beginSection(name);
+#else
+        (void)name;
+#endif
+    }
+    ~ScopedBismuthTrace() {
+#if defined(BISMUTH_ENABLE_ATRACE)
+        if (enabled_) ATrace_endSection();
+#endif
+    }
+    ScopedBismuthTrace(const ScopedBismuthTrace&) = delete;
+    ScopedBismuthTrace& operator=(const ScopedBismuthTrace&) = delete;
+private:
+    bool enabled_ = false;
+};
 bool g_updateQuadHooked = false;
 bool g_drawNumberOfQuadsHooked = false;
 bool g_batchDrawHooked = false;
@@ -164,11 +194,34 @@ void releaseObserver() noexcept {
     g_activeCallbacks.fetch_sub(1, std::memory_order_release);
 }
 
-void hookedBatchDraw(void* self) {
+EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
+    // This timestamp marks the app's EGL buffer-submission boundary, not the
+    // physical display presentation time or GPU completion.
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const auto monotonicNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
     AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordBatchDraw(0);
+    if (observer && monotonicNs > 0)
+        observer->recordFrameStart(static_cast<std::uint64_t>(monotonicNs));
     releaseObserver();
+    return g_originalEglSwapBuffers
+        ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
+}
+
+void hookedBatchDraw(void* self) {
+    ScopedBismuthTrace trace("Bismuth/BatchDraw");
+    // Read the target-verified child count before the original draw mutates no
+    // layout state. This is a single bounded metadata read, not a child walk.
+    std::uint32_t childCount = 0;
+    target_layout::readBatchChildCount(self, childCount);
+
+    const auto start = std::chrono::steady_clock::now();
     if (g_originalBatchDraw) g_originalBatchDraw(self);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) observer->recordBatchDraw(
+        childCount, elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0u);
+    releaseObserver();
 }
 
 void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
@@ -179,6 +232,7 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
 }
 
 bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
+    ScopedBismuthTrace trace("Bismuth/GPUBridge");
     constexpr unsigned int kMaxBridgeQuads = 16384u;
     if (!atlas || !g_gpuDrawBridgeEnabled.load(std::memory_order_acquire) ||
         !g_originalGlDrawElements || quadCount == 0 || quadCount > kMaxBridgeQuads)
@@ -525,6 +579,23 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_increaseTotalQuadsHooked = true;
+    }
+
+    // Optional frame cadence hook: sample at EGL swap submission. Failure is
+    // non-fatal; all original Cocos drawing and observer hooks remain intact.
+    if (!g_eglSwapBuffersHooked) {
+        void* eglSwapBuffers = dlsym(RTLD_DEFAULT, "eglSwapBuffers");
+        Dl_info eglInfo{};
+        if (eglSwapBuffers && dladdr(eglSwapBuffers, &eglInfo) && eglInfo.dli_fname &&
+            std::strcmp(basenameOf(eglInfo.dli_fname), "libEGL.so") == 0) {
+            if (DobbyHook(eglSwapBuffers, reinterpret_cast<void*>(hookedEglSwapBuffers),
+                          reinterpret_cast<void**>(&g_originalEglSwapBuffers)) == 0 &&
+                g_originalEglSwapBuffers) {
+                g_eglSwapBuffersHooked = true;
+            } else {
+                g_originalEglSwapBuffers = nullptr;
+            }
+        }
     }
 
     g_observer.store(observer, std::memory_order_release);
