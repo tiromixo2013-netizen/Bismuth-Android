@@ -21,9 +21,9 @@ GNU Build ID and verifies both resolved symbols belong to
 - `CCTextureAtlas::removeAllQuads()`: calls the original function first, then
   invalidates the atlas slot mapping.
 - `CCTextureAtlas::resizeCapacity(capacity)`: preserves the original boolean
-  result and invalidates the slot mapping whenever a different capacity was
-  requested. The target routine can partially tear down storage on allocation
-  failure, so invalidation is conservative even when it returns false.
+  result and invalidates the slot mapping after every resize attempt. The target
+  routine can partially tear down storage on allocation failure, so invalidation
+  is conservative even when it returns false.
 - `CCTextureAtlas::insertQuad`, `insertQuads`, and `insertQuadFromIndex`:
   forward the original void-returning operation, then invalidate the slot map.
 - `CCTextureAtlas::removeQuadAtIndex` and `removeQuadsAtIndex`: forward the
@@ -34,17 +34,15 @@ GNU Build ID and verifies both resolved symbols belong to
 - `CCTextureAtlas::increaseTotalQuadsWith`: forwards the original
   void-returning operation, then invalidates the slot map because the live
   quad count changes.
-- `CCTextureAtlas::drawNumberOfQuads(count, start)`: observes the dirty byte
-  before forwarding the original draw. If a non-empty draw enters with dirty
-  data, it conservatively invalidates cached quad data after the original
-  call. The engine issues `glBufferSubData` and clears its dirty byte, but GL
-  success is not observable without consuming the game's GL error state, so
-  this hook does not claim or count a confirmed successful upload.
+- `CCTextureAtlas::drawNumberOfQuads(count, start)`: forwards the original draw,
+  then conservatively invalidates cached quad data after every non-empty draw.
+  It deliberately does not read private atlas offsets or claim that a GL upload
+  succeeded.
 
 The batch child count is intentionally reported as zero until its runtime
-object layout is independently validated. The dirty-draw observer only invalidates cached quad data on an upload
-attempt; it deliberately does not count the operation as a confirmed
-successful GL upload. Do not use these counters as proof that GPU culling is
+object layout is independently validated. The draw observer invalidates cached quad data after every non-empty draw; it
+  deliberately does not inspect the private dirty flag or count a confirmed
+  successful GL upload. Do not use these counters as proof that GPU culling is
 safe to enable.
 
 ## API contract
