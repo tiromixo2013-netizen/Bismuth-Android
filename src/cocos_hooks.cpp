@@ -33,7 +33,7 @@ namespace {
 
 constexpr char kTargetLibrary[] = "libcocos2dcpp.so";
 constexpr char kExpectedBuildId[] = "ca621323d54c1d94f5f13a2778ce9c8baa31b9a8";
-constexpr char kSpriteUpdateTransformSymbol[] = "_ZN7cocos2d6CCSprite15updateTransformEv";
+constexpr char kSpriteUpdateTransformSymbol[] = "_ZN7cocos2d8CCSprite15updateTransformEv";
 constexpr char kBatchDrawSymbol[] = "_ZN7cocos2d17CCSpriteBatchNode4drawEv";
 constexpr char kUpdateQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10updateQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
 constexpr char kDrawNumberOfQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas17drawNumberOfQuadsEjj";
