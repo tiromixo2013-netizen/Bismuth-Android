@@ -413,6 +413,7 @@ bool ensureGpuDrawElementsHook() noexcept {
 
     // The GLES detour is not part of passive observation. Install it only
     // when the experimental bridge is explicitly requested.
+    void* glDrawElements = dlsym(RTLD_DEFAULT, kGlDrawElementsSymbol);
     if (!glDrawElements) return false;
     if (DobbyHook(glDrawElements, reinterpret_cast<void*>(hookedGlDrawElements),
                   reinterpret_cast<void**>(&g_originalGlDrawElements)) != 0 ||
