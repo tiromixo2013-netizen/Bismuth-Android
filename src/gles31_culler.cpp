@@ -219,6 +219,7 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
         clearIndexedCommand(indexedCommand_);
         return false;
     }
+    std::vector<std::uint8_t> seenAtlasSlots(atlasCapacity, 0u);
     for (const Candidate& candidate : candidates) {
         if (!isValidAtlasSlot(candidate.payload, atlasCapacity)) {
             if (error) *error = "Candidate payload is outside the current atlas slot range";
@@ -227,6 +228,14 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
             clearIndexedCommand(indexedCommand_);
             return false;
         }
+        if (seenAtlasSlots[candidate.payload] != 0u) {
+            if (error) *error = "Candidate payloads must map one-to-one to atlas quad slots";
+            uploadedCount_ = uploadedAtlasCapacity_ = 0;
+            clearIndirectCommand(indirectCommand_);
+            clearIndexedCommand(indexedCommand_);
+            return false;
+        }
+        seenAtlasSlots[candidate.payload] = 1u;
     }
     if (candidates.empty()) {
         uploadedCount_ = uploadedAtlasCapacity_ = 0;
