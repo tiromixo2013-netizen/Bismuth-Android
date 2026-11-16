@@ -21,6 +21,7 @@ constexpr char kTargetLibrary[] = "libcocos2dcpp.so";
 constexpr char kExpectedBuildId[] = "ca621323d54c1d94f5f13a2778ce9c8baa31b9a8";
 constexpr char kBatchDrawSymbol[] = "_ZN7cocos2d17CCSpriteBatchNode4drawEv";
 constexpr char kUpdateQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10updateQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
+constexpr char kDrawNumberOfQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas17drawNumberOfQuadsEjj";
 constexpr char kRemoveAllQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas14removeAllQuadsEv";
 constexpr char kResizeCapacitySymbol[] = "_ZN7cocos2d14CCTextureAtlas14resizeCapacityEj";
 constexpr char kInsertQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10insertQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
@@ -34,6 +35,7 @@ constexpr char kIncreaseTotalQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas22incre
 
 using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
+using DrawNumberOfQuadsFn = void (*)(void*, unsigned int, unsigned int);
 using RemoveAllQuadsFn = void (*)(void*);
 using ResizeCapacityFn = bool (*)(void*, unsigned int);
 using InsertQuadFn = void (*)(void*, void*, unsigned int);
@@ -45,6 +47,7 @@ using IncreaseQuadsFn = void (*)(void*, unsigned int);
 
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
+DrawNumberOfQuadsFn g_originalDrawNumberOfQuads = nullptr;
 RemoveAllQuadsFn g_originalRemoveAllQuads = nullptr;
 ResizeCapacityFn g_originalResizeCapacity = nullptr;
 InsertQuadFn g_originalInsertQuad = nullptr;
@@ -60,6 +63,7 @@ std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
 bool g_hooksInstalled = false;
 bool g_updateQuadHooked = false;
+bool g_drawNumberOfQuadsHooked = false;
 bool g_batchDrawHooked = false;
 bool g_removeAllQuadsHooked = false;
 bool g_resizeCapacityHooked = false;
@@ -161,6 +165,22 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
     releaseObserver();
 }
 
+void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start) {
+    std::uint8_t dirtyBefore = 0;
+    if (self) std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
+                          sizeof(dirtyBefore));
+    if (g_originalDrawNumberOfQuads)
+        g_originalDrawNumberOfQuads(self, count, start);
+    // The target clears dirty after issuing glBufferSubData, but GL success is
+    // not observable without stealing the game's GL error state. Invalidate
+    // cached quad data conservatively; do not report a confirmed upload.
+    if (dirtyBefore != 0 && count != 0) {
+        AtlasPassiveObserver* observer = acquireObserver();
+        if (observer) observer->invalidateQuadData();
+        releaseObserver();
+    }
+}
+
 void hookedRemoveAllQuads(void* self) {
     if (g_originalRemoveAllQuads) g_originalRemoveAllQuads(self);
     AtlasPassiveObserver* observer = acquireObserver();
@@ -254,6 +274,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
 
     void* batchDraw = dlsym(RTLD_DEFAULT, kBatchDrawSymbol);
     void* updateQuad = dlsym(RTLD_DEFAULT, kUpdateQuadSymbol);
+    void* drawNumberOfQuads = dlsym(RTLD_DEFAULT, kDrawNumberOfQuadsSymbol);
     void* removeAllQuads = dlsym(RTLD_DEFAULT, kRemoveAllQuadsSymbol);
     void* resizeCapacity = dlsym(RTLD_DEFAULT, kResizeCapacitySymbol);
     void* insertQuad = dlsym(RTLD_DEFAULT, kInsertQuadSymbol);
@@ -266,6 +287,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* increaseTotalQuads = dlsym(RTLD_DEFAULT, kIncreaseTotalQuadsSymbol);
     if (!symbolBelongsToTarget(batchDraw, module.path) ||
         !symbolBelongsToTarget(updateQuad, module.path) ||
+        !symbolBelongsToTarget(drawNumberOfQuads, module.path) ||
         !symbolBelongsToTarget(removeAllQuads, module.path) ||
         !symbolBelongsToTarget(resizeCapacity, module.path) ||
         !symbolBelongsToTarget(insertQuad, module.path) ||
@@ -289,6 +311,16 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_updateQuadHooked = true;
+    }
+
+    if (!g_drawNumberOfQuadsHooked) {
+        if (DobbyHook(drawNumberOfQuads, reinterpret_cast<void*>(hookedDrawNumberOfQuads),
+                      reinterpret_cast<void**>(&g_originalDrawNumberOfQuads)) != 0 ||
+            !g_originalDrawNumberOfQuads) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::drawNumberOfQuads observer";
+            return false;
+        }
+        g_drawNumberOfQuadsHooked = true;
     }
 
     if (!g_batchDrawHooked) {
