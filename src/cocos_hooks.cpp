@@ -33,6 +33,7 @@ namespace {
 
 constexpr char kTargetLibrary[] = "libcocos2dcpp.so";
 constexpr char kExpectedBuildId[] = "ca621323d54c1d94f5f13a2778ce9c8baa31b9a8";
+constexpr char kSpriteUpdateTransformSymbol[] = "_ZN7cocos2d8CCSprite15updateTransformEv";
 constexpr char kBatchDrawSymbol[] = "_ZN7cocos2d17CCSpriteBatchNode4drawEv";
 constexpr char kUpdateQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10updateQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
 constexpr char kDrawNumberOfQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas17drawNumberOfQuadsEjj";
@@ -48,6 +49,7 @@ constexpr char kMoveQuadsTwoSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFr
 constexpr char kIncreaseTotalQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas22increaseTotalQuadsWithEj";
 constexpr char kGlDrawElementsSymbol[] = "glDrawElements";
 
+using SpriteUpdateTransformFn = void (*)(void*);
 using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
 using DrawNumberOfQuadsFn = void (*)(void*, unsigned int, unsigned int);
@@ -62,6 +64,7 @@ using IncreaseQuadsFn = void (*)(void*, unsigned int);
 using GlDrawElementsFn = void (*)(GLenum, GLsizei, GLenum, const void*);
 using EglSwapBuffersFn = EGLBoolean (*)(EGLDisplay, EGLSurface);
 
+SpriteUpdateTransformFn g_originalSpriteUpdateTransform = nullptr;
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
 DrawNumberOfQuadsFn g_originalDrawNumberOfQuads = nullptr;
@@ -113,6 +116,7 @@ public:
 private:
     bool enabled_ = false;
 };
+bool g_spriteUpdateTransformHooked = false;
 bool g_updateQuadHooked = false;
 bool g_drawNumberOfQuadsHooked = false;
 bool g_batchDrawHooked = false;
@@ -254,6 +258,14 @@ void hookedBatchDraw(void* self) {
         std::chrono::steady_clock::now() - start).count();
     observer->recordBatchDraw(
         childCount, elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0u);
+    releaseObserver(observer);
+}
+
+void hookedSpriteUpdateTransform(void* self) {
+    if (g_originalSpriteUpdateTransform) g_originalSpriteUpdateTransform(self);
+    if (!g_passiveTelemetryGate.enabled()) return;
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) observer->recordSpriteTransform(true);
     releaseObserver(observer);
 }
 
@@ -505,6 +517,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         return false;
     }
 
+    void* spriteUpdateTransform = dlsym(RTLD_DEFAULT, kSpriteUpdateTransformSymbol);
     void* batchDraw = dlsym(RTLD_DEFAULT, kBatchDrawSymbol);
     void* updateQuad = dlsym(RTLD_DEFAULT, kUpdateQuadSymbol);
     void* drawNumberOfQuads = dlsym(RTLD_DEFAULT, kDrawNumberOfQuadsSymbol);
@@ -519,7 +532,8 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* moveQuadsTwo = dlsym(RTLD_DEFAULT, kMoveQuadsTwoSymbol);
     void* increaseTotalQuads = dlsym(RTLD_DEFAULT, kIncreaseTotalQuadsSymbol);
     void* glDrawElements = dlsym(RTLD_DEFAULT, kGlDrawElementsSymbol);
-    if (!symbolBelongsToTarget(batchDraw, module.path) ||
+    if (!symbolBelongsToTarget(spriteUpdateTransform, module.path) ||
+        !symbolBelongsToTarget(batchDraw, module.path) ||
         !symbolBelongsToTarget(updateQuad, module.path) ||
         !symbolBelongsToTarget(drawNumberOfQuads, module.path) ||
         !symbolBelongsToTarget(removeAllQuads, module.path) ||
@@ -534,6 +548,17 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         !symbolBelongsToTarget(increaseTotalQuads, module.path)) {
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
+    }
+
+    if (!g_spriteUpdateTransformHooked) {
+        if (DobbyHook(spriteUpdateTransform, reinterpret_cast<void*>(hookedSpriteUpdateTransform),
+                      reinterpret_cast<void**>(&g_originalSpriteUpdateTransform)) != 0 ||
+            !g_originalSpriteUpdateTransform) {
+            g_originalSpriteUpdateTransform = nullptr;
+            if (error) *error = "Dobby failed to install the CCSprite::updateTransform telemetry hook";
+            return false;
+        }
+        g_spriteUpdateTransformHooked = true;
     }
 
     if (!g_updateQuadHooked) {
