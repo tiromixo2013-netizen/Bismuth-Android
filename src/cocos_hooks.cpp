@@ -10,6 +10,7 @@
 #include <elf.h>
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
@@ -37,6 +38,7 @@ constexpr char kRemoveQuadsAtIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas18remov
 constexpr char kMoveQuadsThreeSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjjj";
 constexpr char kMoveQuadsTwoSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjj";
 constexpr char kIncreaseTotalQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas22increaseTotalQuadsWithEj";
+constexpr char kGlDrawElementsSymbol[] = "glDrawElements";
 
 using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
@@ -49,6 +51,7 @@ using TwoIndexFn = void (*)(void*, unsigned int, unsigned int);
 using OneIndexFn = void (*)(void*, unsigned int);
 using ThreeIndexFn = void (*)(void*, unsigned int, unsigned int, unsigned int);
 using IncreaseQuadsFn = void (*)(void*, unsigned int);
+using GlDrawElementsFn = void (*)(GLenum, GLsizei, GLenum, const void*);
 
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
@@ -63,7 +66,12 @@ TwoIndexFn g_originalRemoveQuadsAtIndex = nullptr;
 ThreeIndexFn g_originalMoveQuadsThree = nullptr;
 TwoIndexFn g_originalMoveQuadsTwo = nullptr;
 IncreaseQuadsFn g_originalIncreaseTotalQuads = nullptr;
+GlDrawElementsFn g_originalGlDrawElements = nullptr;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
+thread_local void* g_activeAtlasDraw = nullptr;
+thread_local unsigned int g_activeAtlasCount = 0;
+thread_local unsigned int g_activeAtlasStart = 0;
+thread_local bool g_insideAtlasDraw = false;
 std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
@@ -171,25 +179,140 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
     releaseObserver();
 }
 
-bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
-    // Safety interlock: the current prototype does not yet extract calibrated
-    // per-quad bounds in the game's clip-space. Sending synthetic full-screen
-    // bounds through a replacement EBO is not a valid culling implementation
-    // and can alter rendering on some drivers. Keep the original Cocos draw
-    // path until real bounds, atlas layout, and device runtime tests are proven.
-    (void)atlas;
-    (void)quadCount;
-    (void)start;
+bool readCurrentMvp(GLint program, GLfloat* matrix) {
+    static constexpr const char* names[] = {
+        "CC_MVPMatrix", "u_MVPMatrix", "uMVPMatrix", "u_MVP"
+    };
+    for (const char* name : names) {
+        const GLint location = glGetUniformLocation(static_cast<GLuint>(program), name);
+        if (location < 0) continue;
+        glGetUniformfv(static_cast<GLuint>(program), location, matrix);
+        bool finite = true;
+        for (unsigned int i = 0; i < 16; ++i)
+            finite = finite && std::isfinite(matrix[i]);
+        if (finite) return true;
+    }
     return false;
 }
 
+bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
+    constexpr unsigned int kMaxBridgeQuads = 16384u;
+    if (!atlas || !g_gpuDrawBridgeEnabled.load(std::memory_order_acquire) ||
+        !g_originalGlDrawElements || quadCount < 256u || quadCount > kMaxBridgeQuads)
+        return false;
+
+    std::uint32_t atlasCapacity = 0;
+    std::uint32_t usedQuads = 0;
+    std::memcpy(&atlasCapacity, static_cast<const std::uint8_t*>(atlas) + 0x50, sizeof(atlasCapacity));
+    std::memcpy(&usedQuads, static_cast<const std::uint8_t*>(atlas) + 0x4c, sizeof(usedQuads));
+    if (atlasCapacity == 0 || atlasCapacity > kMaxBridgeQuads ||
+        start > usedQuads || quadCount > usedQuads - start ||
+        start > atlasCapacity || quadCount > atlasCapacity - start)
+        return false;
+
+    // Read the active Cocos position stream and its MVP matrix. If the shader or
+    // vertex layout differs from the calibrated atlas path, retain the original draw.
+    GLint program = 0;
+    GLint stride = 0;
+    GLint positionSize = 0;
+    GLint positionType = 0;
+    GLint positionEnabled = 0;
+    GLint attributeBuffer = 0;
+    void* positionPointer = nullptr;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &attributeBuffer);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &stride);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_SIZE, &positionSize);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_TYPE, &positionType);
+    glGetVertexAttribPointerv(0, GL_VERTEX_ATTRIB_ARRAY_POINTER, &positionPointer);
+    const std::uintptr_t positionOffset = reinterpret_cast<std::uintptr_t>(positionPointer);
+    if (program == 0 || positionEnabled != GL_TRUE || attributeBuffer == 0 ||
+        stride != 24 || positionSize != 3 || positionType != GL_FLOAT ||
+        positionOffset != 0)
+        return false;
+
+    // Confirm the exact atlas VBO is currently bound and contains the requested
+    // complete quad range before exposing it to the compute shader as an SSBO.
+    GLint previousArrayBuffer = 0;
+    GLint vertexBufferBytes = 0;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
+    if (static_cast<GLuint>(previousArrayBuffer) != static_cast<GLuint>(attributeBuffer)) {
+        glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(attributeBuffer));
+        glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vertexBufferBytes);
+        glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousArrayBuffer));
+    } else {
+        glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vertexBufferBytes);
+    }
+    const std::uint64_t requiredBytes =
+        (static_cast<std::uint64_t>(start) + quadCount) * 96u;
+    if (vertexBufferBytes < 0 ||
+        static_cast<std::uint64_t>(vertexBufferBytes) < requiredBytes)
+        return false;
+
+    GLfloat mvp[16] = {};
+    if (!readCurrentMvp(program, mvp)) return false;
+
+    static Gles31Culler* culler = new (std::nothrow) Gles31Culler();
+    if (!culler) return false;
+    static bool initializationAttempted = false;
+    static bool initializationSucceeded = false;
+    if (!initializationAttempted) {
+        initializationAttempted = true;
+        initializationSucceeded = culler->initialize(nullptr);
+    }
+    if (!initializationSucceeded || !culler->isInitialized()) return false;
+
+    if (!culler->generateAtlasCandidates(static_cast<GLuint>(attributeBuffer),
+                                         start, quadCount, atlasCapacity, mvp, nullptr) ||
+        !culler->dispatch(Rect{-1.0f, -1.0f, 1.0f, 1.0f}, quadCount, nullptr))
+        return false;
+
+    GLint previousElementBuffer = 0;
+    GLint previousIndirectBuffer = 0;
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &previousElementBuffer);
+    glGetIntegerv(GL_DRAW_INDIRECT_BUFFER_BINDING, &previousIndirectBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, culler->atlasElementIndexBuffer());
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, culler->indexedCommandBuffer());
+    glDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_SHORT, nullptr);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLuint>(previousElementBuffer));
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, static_cast<GLuint>(previousIndirectBuffer));
+    return true;
+}
+
+void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices) {
+    if (g_insideAtlasDraw && g_activeAtlasDraw && mode == GL_TRIANGLES &&
+        type == GL_UNSIGNED_SHORT && count >= 0 &&
+        static_cast<unsigned int>(count) == g_activeAtlasCount * 6u &&
+        reinterpret_cast<std::uintptr_t>(indices) ==
+            static_cast<std::uintptr_t>(g_activeAtlasStart) * 12u &&
+        tryGpuIndexedDraw(g_activeAtlasDraw, g_activeAtlasCount, g_activeAtlasStart))
+        return;
+    if (g_originalGlDrawElements) g_originalGlDrawElements(mode, count, type, indices);
+}
+
 void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start) {
+    const bool previousInside = g_insideAtlasDraw;
+    void* previousAtlas = g_activeAtlasDraw;
+    const unsigned int previousCount = g_activeAtlasCount;
+    const unsigned int previousStart = g_activeAtlasStart;
+    g_insideAtlasDraw = true;
+    g_activeAtlasDraw = self;
+    g_activeAtlasCount = count;
+    g_activeAtlasStart = start;
+    std::uint8_t dirtyBefore = 0;
+    if (self) std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
+                          sizeof(dirtyBefore));
     if (g_originalDrawNumberOfQuads)
         g_originalDrawNumberOfQuads(self, count, start);
-    // Avoid reading private CCTextureAtlas offsets. The draw call may have
-    // uploaded changed quad data, so invalidate the cached revision
-    // conservatively whenever a non-empty atlas range is submitted.
-    if (count != 0) {
+    g_insideAtlasDraw = previousInside;
+    g_activeAtlasDraw = previousAtlas;
+    g_activeAtlasCount = previousCount;
+    g_activeAtlasStart = previousStart;
+    // The target clears dirty after issuing glBufferSubData, but GL success is
+    // not observable without stealing the game's GL error state. Invalidate
+    // cached quad data conservatively; do not report a confirmed upload.
+    if (dirtyBefore != 0 && count != 0) {
         AtlasPassiveObserver* observer = acquireObserver();
         if (observer) observer->invalidateQuadData();
         releaseObserver();
@@ -243,14 +366,18 @@ void hookedIncreaseTotalQuads(void* self, unsigned int amount) {
 }
 
 bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
+    std::uint32_t oldCapacity = 0;
+    if (self) std::memcpy(&oldCapacity, static_cast<const std::uint8_t*>(self) + 0x50,
+                          sizeof(oldCapacity));
     const bool result = g_originalResizeCapacity
         ? g_originalResizeCapacity(self, requestedCapacity) : false;
-    // Capacity changes can relocate atlas storage. Avoid depending on private
-    // object offsets; invalidate conservatively after every resize attempt.
-    (void)requestedCapacity;
-    AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordStructuralMutation(true);
-    releaseObserver();
+    // A failed allocation can partially tear down atlas storage. Invalidate
+    // whenever a different capacity was requested, even if result is false.
+    if (oldCapacity != requestedCapacity) {
+        AtlasPassiveObserver* observer = acquireObserver();
+        if (observer) observer->recordStructuralMutation(true);
+        releaseObserver();
+    }
     return result;
 }
 
@@ -296,6 +423,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* moveQuadsThree = dlsym(RTLD_DEFAULT, kMoveQuadsThreeSymbol);
     void* moveQuadsTwo = dlsym(RTLD_DEFAULT, kMoveQuadsTwoSymbol);
     void* increaseTotalQuads = dlsym(RTLD_DEFAULT, kIncreaseTotalQuadsSymbol);
+    void* glDrawElements = dlsym(RTLD_DEFAULT, kGlDrawElementsSymbol);
     if (!symbolBelongsToTarget(batchDraw, module.path) ||
         !symbolBelongsToTarget(updateQuad, module.path) ||
         !symbolBelongsToTarget(drawNumberOfQuads, module.path) ||
@@ -308,9 +436,20 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         !symbolBelongsToTarget(removeQuadsAtIndex, module.path) ||
         !symbolBelongsToTarget(moveQuadsThree, module.path) ||
         !symbolBelongsToTarget(moveQuadsTwo, module.path) ||
-        !symbolBelongsToTarget(increaseTotalQuads, module.path)) {
+        !symbolBelongsToTarget(increaseTotalQuads, module.path) ||
+        !glDrawElements) {
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
+    }
+
+    if (!g_originalGlDrawElements) {
+        if (DobbyHook(glDrawElements, reinterpret_cast<void*>(hookedGlDrawElements),
+                      reinterpret_cast<void**>(&g_originalGlDrawElements)) != 0 ||
+            !g_originalGlDrawElements) {
+            g_originalGlDrawElements = nullptr;
+            if (error) *error = "Dobby failed to install the GLES glDrawElements bridge";
+            return false;
+        }
     }
 
     if (!g_updateQuadHooked) {
@@ -444,15 +583,11 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
 }
 
 void setGpuDrawBridgeEnabled(bool enabled) noexcept {
-    // Hard safety lock: no public API or stale setting may enable the bridge.
-    // The current draw adapter has no calibrated per-quad bounds and always
-    // falls back to the original Cocos renderer.
-    (void)enabled;
-    g_gpuDrawBridgeEnabled.store(false, std::memory_order_release);
+    g_gpuDrawBridgeEnabled.store(enabled, std::memory_order_release);
 }
 
 bool isGpuDrawBridgeEnabled() noexcept {
-    return false;
+    return g_gpuDrawBridgeEnabled.load(std::memory_order_acquire);
 }
 
 void detachCocosPassiveHooks(AtlasPassiveObserver* observer) noexcept {
