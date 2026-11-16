@@ -81,6 +81,9 @@ public:
         revisions_.recordQuadWrite();
         counters_.recordDirtyUpload(quadCount);
     }
+    // Conservative invalidation for an upload attempt whose GL success cannot
+    // be observed without consuming or changing the game's GL error state.
+    void invalidateQuadData() noexcept { revisions_.recordQuadWrite(); }
     void invalidateUnknownMutation() noexcept {
         revisions_.recordStructuralMutation();
         counters_.recordStructuralMutation();
