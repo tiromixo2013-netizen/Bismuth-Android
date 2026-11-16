@@ -44,12 +44,23 @@ public:
     ScopedComputeState() {
         glGetIntegerv(GL_CURRENT_PROGRAM, &program_);
         glGetIntegerv(GL_SHADER_STORAGE_BUFFER_BINDING, &genericStorage_);
-        for (GLuint i = 0; i < 4; ++i)
+        for (GLuint i = 0; i < 4; ++i) {
             glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, i, &indexedStorage_[i]);
+            glGetInteger64i_v(GL_SHADER_STORAGE_BUFFER_START, i, &indexedStorageStart_[i]);
+            glGetInteger64i_v(GL_SHADER_STORAGE_BUFFER_SIZE, i, &indexedStorageSize_[i]);
+        }
     }
     ~ScopedComputeState() {
-        for (GLuint i = 0; i < 4; ++i)
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, static_cast<GLuint>(indexedStorage_[i]));
+        for (GLuint i = 0; i < 4; ++i) {
+            if (indexedStorage_[i] != 0 && indexedStorageSize_[i] > 0) {
+                glBindBufferRange(GL_SHADER_STORAGE_BUFFER, i,
+                                  static_cast<GLuint>(indexedStorage_[i]),
+                                  static_cast<GLintptr>(indexedStorageStart_[i]),
+                                  static_cast<GLsizeiptr>(indexedStorageSize_[i]));
+            } else {
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, static_cast<GLuint>(indexedStorage_[i]));
+            }
+        }
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, static_cast<GLuint>(genericStorage_));
         glUseProgram(static_cast<GLuint>(program_));
     }
@@ -59,6 +70,8 @@ private:
     GLint program_ = 0;
     GLint genericStorage_ = 0;
     GLint indexedStorage_[4] = {0, 0, 0, 0};
+    GLint64 indexedStorageStart_[4] = {0, 0, 0, 0};
+    GLint64 indexedStorageSize_[4] = {0, 0, 0, 0};
 };
 
 void bufferData(GLuint id, GLsizeiptr bytes) {
