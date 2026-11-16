@@ -7,6 +7,8 @@ typedef int (*BismuthAutoHookStatusSignature)(void);
 typedef const char* (*BismuthAutoHookErrorSignature)(void);
 typedef int (*BismuthObserverSnapshotSignature)(void*, BismuthAtlasTelemetry*, uint64_t*, uint64_t*);
 typedef void (*BismuthObserverMutationSignature)(void*, int);
+typedef void (*BismuthSetGpuTimingSignature)(int);
+typedef int (*BismuthGpuTimingSnapshotSignature)(BismuthGpuTiming*);
 _Static_assert(_Generic(&bismuth_upload, BismuthUploadSignature: 1, default: 0),
                "bismuth_upload signature must include atlas capacity");
 _Static_assert(_Generic(&bismuth_install_cocos_hooks, BismuthInstallHooksSignature: 1, default: 0),
@@ -20,6 +22,12 @@ _Static_assert(_Generic(&bismuth_observer_snapshot, BismuthObserverSnapshotSigna
 _Static_assert(_Generic(&bismuth_observer_record_structural_mutation,
                         BismuthObserverMutationSignature: 1, default: 0),
                "observer mutation C ABI signature must remain stable");
+_Static_assert(_Generic(&bismuth_set_gpu_timing_enabled, BismuthSetGpuTimingSignature: 1, default: 0),
+               "GPU timing enable C ABI signature must remain stable");
+_Static_assert(_Generic(&bismuth_gpu_timing_snapshot, BismuthGpuTimingSnapshotSignature: 1, default: 0),
+               "GPU timing snapshot C ABI signature must remain stable");
+_Static_assert(sizeof(BismuthGpuTiming) == 56,
+               "BismuthGpuTiming C ABI layout must remain stable");
 _Static_assert(sizeof(BismuthAtlasTelemetry) == 136,
                "BismuthAtlasTelemetry must match the C++ snapshot layout");
 _Static_assert(offsetof(BismuthAtlasTelemetry, max_children_in_batch) == 80,
@@ -40,5 +48,6 @@ int main(void) {
            BISMUTH_CAP_GLES31_COMPUTE == 2u &&
            BISMUTH_CAP_ATLAS_INDEX_OUTPUT == 4u &&
            BISMUTH_CAP_PASSIVE_OBSERVER_API == 8u &&
-           BISMUTH_CAP_COCOS_PASSIVE_HOOKS == 16u ? 0 : 1;
+           BISMUTH_CAP_COCOS_PASSIVE_HOOKS == 16u &&
+           BISMUTH_CAP_GPU_TIMER_QUERY == 128u ? 0 : 1;
 }
