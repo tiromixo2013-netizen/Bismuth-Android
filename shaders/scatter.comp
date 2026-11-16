@@ -6,11 +6,11 @@ layout(std430, binding = 1) readonly buffer LocalOffsets { uint localOffsets[]; 
 layout(std430, binding = 2) readonly buffer GroupOffsets { uint groupOffsets[]; };
 layout(std430, binding = 3) writeonly buffer VisibleIndices { uint visibleIndices[]; };
 struct Candidate { vec4 bounds; uint payload; uint pad0; uint pad1; uint pad2; };
-layout(std430, binding = 4) readonly buffer Candidates { Candidate items[]; };
+layout(std430, binding = 4) readonly buffer Candidates { Candidate items[]; };\nlayout(std430, binding = 5) writeonly buffer PackedElementIndices { uint packedIndices[]; };
 uniform uint uCount;
 void main() {
     uint i = gl_GlobalInvocationID.x;
     if (i >= uCount || flags[i] == 0u) return;
     uint destination = groupOffsets[gl_WorkGroupID.x] + localOffsets[i];
-    visibleIndices[destination] = items[i].payload;
+    uint slot = items[i].payload;\n    visibleIndices[destination] = slot;\n\n    // Emit the six 16-bit atlas indices in three packed uint words in the\n    // same stable scatter pass; this removes a separate compute dispatch.\n    uint base = slot * 4u;\n    uint outputBase = destination * 3u;\n    uint i0 = base;\n    uint i1 = base + 1u;\n    uint i2 = base + 2u;\n    uint i3 = base + 3u;\n    packedIndices[outputBase + 0u] = i0 | (i1 << 16u);\n    packedIndices[outputBase + 1u] = i2 | (i3 << 16u);\n    packedIndices[outputBase + 2u] = i2 | (i1 << 16u);
 }
