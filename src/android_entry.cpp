@@ -164,6 +164,7 @@ extern "C" int bismuth_observer_snapshot(void* handle, BismuthAtlasTelemetry* te
     telemetry->batch_draw_calls = counters.batchDrawCalls;
     telemetry->batch_draw_cpu_ns_total = counters.batchDrawCpuNsTotal;
     telemetry->batch_draw_cpu_ns_max = counters.batchDrawCpuNsMax;
+    telemetry->batch_draw_children_total = counters.batchDrawChildrenTotal;
     telemetry->sprite_transform_calls = counters.spriteTransformCalls;
     telemetry->unknown_transform_overrides = counters.unknownTransformOverrides;
     telemetry->quad_writes = counters.quadWrites;
