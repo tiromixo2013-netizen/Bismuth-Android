@@ -1,4 +1,5 @@
 #include "bismuth/culling_reference.hpp"
+#include "bismuth/atlas_indices.hpp"
 #include <cassert>
 #include <iostream>
 #include <limits>
@@ -26,7 +27,6 @@ int main() {
     };
     auto stable = cullStable(ordered, Rect{-1, -1, 10, 10});
     assert((stable.visibleIndices == std::vector<std::uint32_t>{0, 1, 2}));
-    // Invalid and non-finite bounds must be rejected consistently with the GPU classifier.
     const float nan = std::numeric_limits<float>::quiet_NaN();
     std::vector<Candidate> invalidBounds = {
         {{5, 5, 1, 1}, 10}, {{nan, 0, 10, 10}, 11},
@@ -36,5 +36,27 @@ int main() {
     assert((validOnly.visibleIndices == std::vector<std::uint32_t>{2}));
     auto invalidView = cullStable(candidates, Rect{nan, 0, 100, 100});
     assert(invalidView.visibleIndices.empty());
+
+    // Target-verified 2.2081 atlas EBO pattern, preserving slot order.
+    std::vector<std::uint16_t> elements;
+    assert(buildAtlasElementIndices16({2u, 0u, 1u}, 3u, elements));
+    assert((elements == std::vector<std::uint16_t>{
+        8u, 9u, 10u, 11u, 10u, 9u,
+        0u, 1u, 2u, 3u, 2u, 1u,
+        4u, 5u, 6u, 7u, 6u, 5u
+    }));
+    assert(buildAtlasElementIndices16({}, 0u, elements));
+    assert(elements.empty());
+    assert(!buildAtlasElementIndices16({3u}, 3u, elements));
+    assert(elements.empty());
+    assert(!buildAtlasElementIndices16({0u}, kAtlasMaxQuads16 + 1u, elements));
+    IndexedDrawCommand command{};
+    assert(makeIndexedDrawCommand(7u, command));
+    assert(command.count == 42u && command.instanceCount == 1u &&
+           command.firstIndex == 0u && command.baseVertex == 0 &&
+           command.baseInstance == 0u);
+    assert(makeIndexedDrawCommand(0u, command));
+    assert(command.count == 0u && command.instanceCount == 0u);
+    assert(!makeIndexedDrawCommand(kAtlasMaxQuads16 + 1u, command));
     std::cout << "Bismuth-Android reference tests passed\n";
 }
