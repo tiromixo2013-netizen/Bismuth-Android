@@ -30,61 +30,11 @@ jobs:
         uses: android-actions/setup-android@v3
       - name: Install exact Android NDK revision
         run: |
+          yes | sdkmanager --licenses >/dev/null
           sdkmanager --install "ndk;27.2.12479018"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Verify exact Android NDK revision
-        run: grep -q '^Pkg.Revision = 27.2.12479018      - name: Configure Android ARM64 GLES 3.1 backend
-        run: >-
-          cmake -S . -B build-android
-          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
-          -DANDROID_ABI=arm64-v8a
-          -DANDROID_PLATFORM=android-26
-          -DBISMUTH_ENABLE_GLES31=ON
-          -DBISMUTH_ENABLE_ATRACE=ON
-          -DBISMUTH_BUILD_TESTS=OFF
-      - name: Build Android ARM64 shared library
-        run: cmake --build build-android --parallel
-      - name: Verify embedded shader matches source validation logic
-        run: grep -Fq 'bool valid = all(not(isnan(b)))' build-android/generated/embedded_shaders.hpp
-      - name: Verify ARM64 ELF and exported C API
-        run: |
-          file build-android/libbismuth.so
-          readelf -h build-android/libbismuth.so | grep -E 'Class:|Machine:'
-          readelf -h build-android/libbismuth.so | grep -q 'Class:.*ELF64'
-          readelf -h build-android/libbismuth.so | grep -q 'Machine:.*AArch64'
-          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D --defined-only build-android/libbismuth.so | tee exported-symbols.txt
-          grep -q 'bismuth_android_build_id' exported-symbols.txt
-          grep -q 'bismuth_android_capabilities' exported-symbols.txt
-          grep -q 'bismuth_create' exported-symbols.txt
-          grep -q 'bismuth_initialize' exported-symbols.txt
-          grep -q 'bismuth_is_initialized' exported-symbols.txt
-          grep -q 'bismuth_upload' exported-symbols.txt
-          grep -q 'bismuth_dispatch' exported-symbols.txt
-          grep -q 'bismuth_visible_index_buffer' exported-symbols.txt
-          grep -q 'bismuth_indirect_command_buffer' exported-symbols.txt
-          grep -q 'bismuth_indexed_command_buffer' exported-symbols.txt
-          grep -q 'bismuth_atlas_element_index_buffer' exported-symbols.txt
-          grep -q 'bismuth_observer_begin_frame' exported-symbols.txt
-          grep -q 'bismuth_observer_record_frame_start' exported-symbols.txt
-          grep -q 'bismuth_observer_record_batch_draw' exported-symbols.txt
-          grep -q 'bismuth_observer_record_sprite_transform' exported-symbols.txt
-          grep -q 'bismuth_observer_record_quad_write' exported-symbols.txt
-          grep -q 'bismuth_observer_record_structural_mutation' exported-symbols.txt
-          grep -q 'bismuth_observer_record_dirty_upload' exported-symbols.txt
-          grep -q 'bismuth_observer_invalidate_unknown_mutation' exported-symbols.txt
-          grep -q 'bismuth_observer_snapshot' exported-symbols.txt
-          grep -q 'bismuth_install_cocos_hooks' exported-symbols.txt
-          grep -q 'bismuth_auto_hook_status' exported-symbols.txt
-          grep -q 'bismuth_auto_hook_error' exported-symbols.txt
-          grep -q 'bismuth_destroy' exported-symbols.txt
-      - name: Upload Android ARM64 library
-        uses: actions/upload-artifact@v4
-        with:
-          name: bismuth-android-arm64
-          path: build-android/libbismuth.so
-          if-no-files-found: error
-          retention-days: 14
- "$ANDROID_NDK_HOME/source.properties"
+        run: grep -q '^Pkg.Revision = 27.2.12479018$' "$ANDROID_NDK_HOME/source.properties"
       - name: Configure Android ARM64 GLES 3.1 backend
         run: >-
           cmake -S . -B build-android
