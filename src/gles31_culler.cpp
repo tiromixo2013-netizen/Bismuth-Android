@@ -68,11 +68,14 @@ void bufferData(GLuint id, GLsizeiptr bytes) {
 
 // Best-effort fail-closed command reset. ScopedComputeState restores the
 // generic SSBO binding after this helper returns.
-bool clearIndirectCommand(GLuint commandBuffer) {
+void clearIndirectCommand(GLuint commandBuffer) {
     const GLuint emptyCommand[4] = {6u, 0u, 0u, 0u};
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, commandBuffer);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(emptyCommand), emptyCommand);
-    return glGetError() == GL_NO_ERROR;
+    // Do not call glGetError() here: GLES exposes a context-wide sticky error
+    // flag, so this helper could consume an unrelated error raised by the game.
+    // The reset remains best-effort; callers must not consume the command after
+    // a rejected dispatch regardless of whether the reset itself can be verified.
 }
 }
 
@@ -204,11 +207,8 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     ScopedComputeState state;
     const auto failClosed = [&](const char* message) {
         uploadedCount_ = 0;
-        const bool cleared = clearIndirectCommand(indirectCommand_);
-        if (error) {
-            *error = message;
-            if (!cleared) *error += "; failed to clear the previous indirect command";
-        }
+        clearIndirectCommand(indirectCommand_);
+        if (error) *error = message;
         return false;
     };
     if (!std::isfinite(view.left) || !std::isfinite(view.bottom) ||
@@ -217,10 +217,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         return failClosed("View rectangle must contain finite, non-inverted bounds");
     }
     if (count == 0) {
-        if (!clearIndirectCommand(indirectCommand_)) {
-            if (error) *error = "Failed to clear the empty indirect draw command";
-            return false;
-        }
+        clearIndirectCommand(indirectCommand_);
         uploadedCount_ = 0;
         return true;
     }
