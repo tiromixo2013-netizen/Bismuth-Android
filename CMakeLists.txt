@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(BismuthAndroid VERSION 0.1.0 LANGUAGES C CXX)
 option(BISMUTH_BUILD_TESTS "Build host-side reference tests" ON)
 option(BISMUTH_ENABLE_GLES31 "Build the Android OpenGL ES 3.1 backend" OFF)
+option(BISMUTH_ENABLE_COCOS_HOOKS "Build the build-ID-gated passive Cocos2d hook adapter" ON)
 
 # Generate embedded shaders from the authoritative shader files.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
