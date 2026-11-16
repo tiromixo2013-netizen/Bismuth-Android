@@ -41,9 +41,10 @@ BISMUTH_API int bismuth_upload(void* handle, const BismuthCandidate* candidates,
 BISMUTH_API int bismuth_dispatch(void* handle, float left, float bottom, float right, float top, uint32_t count);
 /* SSBO of uint32 payload IDs for visible candidates, stable input order; for atlas use these are quad slots. */
 BISMUTH_API uint32_t bismuth_visible_index_buffer(void* handle);
-/* Four-word DrawArraysIndirect command (6 vertices, visible candidate count).
- * This is NOT a Cocos2d indexed-atlas draw command. */
+/* Four-word DrawArraysIndirect command (6 vertices, visible candidate count). */
 BISMUTH_API uint32_t bismuth_indirect_command_buffer(void* handle);
+/* Five-word indexed-atlas command: count=visible slots*6, one instance when non-empty. */
+BISMUTH_API uint32_t bismuth_indexed_command_buffer(void* handle);
 /* Destroy while the GLES context that created this instance is current. */
 BISMUTH_API void bismuth_destroy(void* handle);
 
