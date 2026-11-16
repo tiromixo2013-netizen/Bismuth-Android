@@ -235,14 +235,14 @@ bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) 
     // Confirm the exact atlas VBO is currently bound and contains the requested
     // complete quad range before exposing it to the compute shader as an SSBO.
     GLint previousArrayBuffer = 0;
-    GLint64 vertexBufferBytes = 0;
+    GLint vertexBufferBytes = 0;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
     if (static_cast<GLuint>(previousArrayBuffer) != static_cast<GLuint>(attributeBuffer)) {
         glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(attributeBuffer));
-        glGetBufferParameteri64v(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vertexBufferBytes);
+        glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vertexBufferBytes);
         glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousArrayBuffer));
     } else {
-        glGetBufferParameteri64v(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vertexBufferBytes);
+        glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vertexBufferBytes);
     }
     const std::uint64_t requiredBytes =
         (static_cast<std::uint64_t>(start) + quadCount) * 96u;
