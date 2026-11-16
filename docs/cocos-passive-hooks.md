@@ -61,27 +61,9 @@ immediately after `System.loadLibrary("cocos2dcpp")`. Query `bismuth_auto_hook_s
 and `bismuth_auto_hook_error()` to see whether exact-binary validation and
 installation succeeded. A version mismatch is non-fatal to game startup.
 
-All installed Cocos method hooks remain pass-through observers. An additional
-GLES `glDrawElements` interception provides an **experimental, opt-in** bridge:
-when explicitly enabled through `bismuth_set_gpu_draw_bridge_enabled(1)`, and
-only while the exact atlas `drawNumberOfQuads(count, start)` call is active,
-it attempts to dispatch Bismuth's compute pipeline and submit the generated
-16-bit EBO with `glDrawElementsIndirect`. It saves and restores the current
-element-buffer and indirect-buffer bindings. If validation, initialization,
-upload, or dispatch fails, it calls the original `glDrawElements` unchanged.
+All installed Cocos method hooks remain pass-through observers. The current source does not install a `glDrawElements` interception and does not submit the generated EBO or indirect command to Geometry Dash. The GPU draw bridge is hard-locked OFF in the Geode mod; the original Cocos renderer remains the only active draw path. The exported toggle API cannot override this safety interlock.
 
-The bridge is disabled by default. A host integration or diagnostic loader
-must explicitly call `bismuth_set_gpu_draw_bridge_enabled(1)` after successful
-hook installation to activate it; call the same API with `0` to return to the
-original draw path. The exported query
-`bismuth_is_gpu_draw_bridge_enabled()` reports the toggle state.
-
-The first bridge intentionally marks every submitted atlas quad visible using
-finite full-range bounds. It verifies the generated EBO/indirect command and
-preserves atlas slot order, but it does **not** cull sprites, remove the CPU
-child-transform traversal, or claim a performance improvement. It is disabled
-by default and must remain off until tested on the exact device/game build.
-The original draw call is the fail-closed fallback.
+The standalone GLES compute pipeline and atlas EBO builder are prototypes only. They do not yet consume calibrated per-quad clip-space bounds, and no in-game visual correctness or performance result is claimed.
 
 `bismuth_destroy` detaches telemetry safely. The pass-through trampolines
 remain installed for process lifetime rather than unpatching executable code
