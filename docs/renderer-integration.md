@@ -43,6 +43,27 @@ compatible VAO that references the game's atlas vertex buffer without corrupting
 engine's VAO state. The atlas vertex layout, VBO/VAO ownership, and the exact game's
 draw configuration must be verified from the 2.2081 ARM64 binary before implementation.
 
+## Conservative clip-space bounds utility
+
+`bismuth/clip_bounds.hpp` now provides a small, host-testable projection helper for
+four caller-supplied quad vertices and an OpenGL column-major MVP matrix. It computes
+the NDC rectangle from all four projected vertices. If the matrix or positions are
+non-finite, or any projected vertex has an unsafe/non-positive clip-space W, it fails
+open to the full NDC view rather than risk incorrectly dropping visible geometry.
+
+This is only a mathematical utility. It does **not** extract vertices from
+`CCSprite` or `CCTextureAtlas`, does not discover the game's MVP matrix, and is not
+called by the live hook path. Its purpose is to make the eventual projection step
+independently testable once a verified source of quad vertices and the correct
+per-frame transform matrix are available.
+
+The compute upload path also rejects duplicate candidate payloads within one atlas
+upload. A candidate list intended to represent atlas quads must map one-to-one to
+current atlas slots; duplicate slots could otherwise be emitted twice and change
+alpha blending. This check does not establish that the caller's slot mapping is
+current—structural mutation tracking and frame-by-frame mapping validation remain
+required.
+
 ## GLES backend ownership and lifecycle
 
 - Create and make current a GLES 3.1 context before initialize().
