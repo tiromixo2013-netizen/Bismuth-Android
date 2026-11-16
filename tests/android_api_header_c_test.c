@@ -2,12 +2,18 @@
 
 typedef int (*BismuthUploadSignature)(void*, const BismuthCandidate*, uint32_t, uint32_t);
 typedef int (*BismuthInstallHooksSignature)(void*, char*, uint32_t);
+typedef int (*BismuthAutoHookStatusSignature)(void);
+typedef const char* (*BismuthAutoHookErrorSignature)(void);
 typedef int (*BismuthObserverSnapshotSignature)(void*, BismuthAtlasTelemetry*, uint64_t*, uint64_t*);
 typedef void (*BismuthObserverMutationSignature)(void*, int);
 _Static_assert(_Generic(&bismuth_upload, BismuthUploadSignature: 1, default: 0),
                "bismuth_upload signature must include atlas capacity");
 _Static_assert(_Generic(&bismuth_install_cocos_hooks, BismuthInstallHooksSignature: 1, default: 0),
                "Cocos hook installation C ABI signature must remain stable");
+_Static_assert(_Generic(&bismuth_auto_hook_status, BismuthAutoHookStatusSignature: 1, default: 0),
+               "automatic hook status C ABI signature must remain stable");
+_Static_assert(_Generic(&bismuth_auto_hook_error, BismuthAutoHookErrorSignature: 1, default: 0),
+               "automatic hook error C ABI signature must remain stable");
 _Static_assert(_Generic(&bismuth_observer_snapshot, BismuthObserverSnapshotSignature: 1, default: 0),
                "observer snapshot C ABI signature must remain stable");
 _Static_assert(_Generic(&bismuth_observer_record_structural_mutation,
