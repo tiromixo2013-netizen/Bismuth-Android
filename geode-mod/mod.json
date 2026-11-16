@@ -1,5 +1,5 @@
 {
-  "geode": "v5.11.2",
+  "geode": "5.11.2",
   "gd": {
     "android": "2.2081"
   },
@@ -27,7 +27,6 @@
     "diagnostics": {
       "type": "bool",
       "name": "Enable diagnostic logging",
-      "description": "Writes Bismuth state changes to the Geode log.",
       "default": true
     }
   }
