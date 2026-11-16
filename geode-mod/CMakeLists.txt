@@ -8,7 +8,7 @@ if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "GEODE_SDK is not set")
 endif()
 
-set(BISMUTH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+set(BISMUTH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 set(BISMUTH_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${BISMUTH_GENERATED_INCLUDE_DIR}")
 foreach(shader classify group_offsets scatter atlas_indices)
@@ -55,4 +55,4 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     BISMUTH_ANDROID_GLES31=1
     BISMUTH_ENABLE_COCOS_HOOKS=1
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE dobby GLESv3 dl log)
+target_link_libraries(${PROJECT_NAME} dobby GLESv3 dl log)
