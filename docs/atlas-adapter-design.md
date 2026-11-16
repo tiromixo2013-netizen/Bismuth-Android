@@ -87,3 +87,11 @@ slot changes, candidate mapping, GL state, and draw ordering on the target
 device. Verify alpha, clipping, blend modes, animation, and fallback behavior.
 Only then compare frame-time on the user's phone. The existing native library
 is a bootstrap and standalone culler prototype; it is not yet a renderer hook.
+
+## Atlas cache invalidation bookkeeping
+
+The host-side `AtlasRevisionTracker` and its observation contract are documented
+in [atlas-lifecycle-contract.md](atlas-lifecycle-contract.md). It distinguishes
+structural slot changes from in-place quad writes so future observers can reject
+stale slot maps and stale quad-derived data independently. The tracker is not
+wired to the game and does not change the renderer.
