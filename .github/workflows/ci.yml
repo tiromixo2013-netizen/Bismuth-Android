@@ -58,6 +58,7 @@ jobs:
           grep -q 'bismuth_visible_index_buffer' exported-symbols.txt
           grep -q 'bismuth_indirect_command_buffer' exported-symbols.txt
           grep -q 'bismuth_indexed_command_buffer' exported-symbols.txt
+          grep -q 'bismuth_atlas_element_index_buffer' exported-symbols.txt
           grep -q 'bismuth_destroy' exported-symbols.txt
       - name: Upload Android ARM64 library
         uses: actions/upload-artifact@v4
