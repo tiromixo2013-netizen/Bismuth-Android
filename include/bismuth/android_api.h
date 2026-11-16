@@ -45,6 +45,8 @@ BISMUTH_API uint32_t bismuth_visible_index_buffer(void* handle);
 BISMUTH_API uint32_t bismuth_indirect_command_buffer(void* handle);
 /* Five-word indexed-atlas command: count=visible slots*6, one instance when non-empty. */
 BISMUTH_API uint32_t bismuth_indexed_command_buffer(void* handle);
+/* Packed 16-bit atlas EBO indices in stable visible-slot order; bind as GL_ELEMENT_ARRAY_BUFFER. */
+BISMUTH_API uint32_t bismuth_atlas_element_index_buffer(void* handle);
 /* Destroy while the GLES context that created this instance is current. */
 BISMUTH_API void bismuth_destroy(void* handle);
 
