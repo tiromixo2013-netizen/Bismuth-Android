@@ -6,6 +6,7 @@
 #include <vector>
 #include "bismuth/android_api.h"
 #include "bismuth/atlas_observation.hpp"
+#include "bismuth/cocos_hooks.hpp"
 #include "bismuth/gles31_culler.hpp"
 
 namespace {
@@ -29,11 +30,12 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
     return JNI_VERSION_1_6;
 }
 extern "C" const char* bismuth_android_build_id() {
-    return "Bismuth-Android 0.4.1-observer-api";
+    return "Bismuth-Android 0.5.0-cocos-hooks";
 }
 extern "C" std::uint32_t bismuth_android_capabilities() {
     return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
-           BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API;
+           BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API |
+           BISMUTH_CAP_COCOS_PASSIVE_HOOKS;
 }
 extern "C" void* bismuth_create() {
     return new (std::nothrow) BismuthInstance{};
@@ -81,6 +83,15 @@ extern "C" std::uint32_t bismuth_atlas_element_index_buffer(void* handle) {
     return handle ? static_cast<BismuthInstance*>(handle)->culler.atlasElementIndexBuffer() : 0u;
 }
 
+extern "C" int bismuth_install_cocos_hooks(void* handle, char* error, std::uint32_t errorCapacity) {
+    if (!handle) return -1;
+    std::string message;
+    const bool ok = bismuth::installCocosPassiveHooks(
+        &static_cast<BismuthInstance*>(handle)->observer, &message);
+    if (!ok) writeError(error, errorCapacity, message);
+    return ok ? 0 : -2;
+}
+
 extern "C" void bismuth_observer_begin_frame(void* handle) {
     if (handle) static_cast<BismuthInstance*>(handle)->observer.beginFrame();
 }
@@ -125,6 +136,9 @@ extern "C" int bismuth_observer_snapshot(void* handle, BismuthAtlasTelemetry* te
 }
 
 extern "C" void bismuth_destroy(void* handle) {
+    if (!handle) return;
+    auto* instance = static_cast<BismuthInstance*>(handle);
+    bismuth::detachCocosPassiveHooks(&instance->observer);
     // Call while the GLES context that owns this instance is current.
-    delete static_cast<BismuthInstance*>(handle);
+    delete instance;
 }
