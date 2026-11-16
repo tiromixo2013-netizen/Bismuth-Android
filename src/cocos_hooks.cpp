@@ -7,6 +7,7 @@
 #include <dlfcn.h>
 #include "bismuth/gles31_culler.hpp"
 #include <GLES3/gl31.h>
+#include <EGL/egl.h>
 #if defined(BISMUTH_ENABLE_ATRACE)
 #include <android/trace.h>
 #endif
@@ -56,6 +57,7 @@ using OneIndexFn = void (*)(void*, unsigned int);
 using ThreeIndexFn = void (*)(void*, unsigned int, unsigned int, unsigned int);
 using IncreaseQuadsFn = void (*)(void*, unsigned int);
 using GlDrawElementsFn = void (*)(GLenum, GLsizei, GLenum, const void*);
+using EglSwapBuffersFn = EGLBoolean (*)(EGLDisplay, EGLSurface);
 
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
@@ -71,6 +73,8 @@ ThreeIndexFn g_originalMoveQuadsThree = nullptr;
 TwoIndexFn g_originalMoveQuadsTwo = nullptr;
 IncreaseQuadsFn g_originalIncreaseTotalQuads = nullptr;
 GlDrawElementsFn g_originalGlDrawElements = nullptr;
+EglSwapBuffersFn g_originalEglSwapBuffers = nullptr;
+bool g_eglSwapBuffersHooked = false;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
 thread_local void* g_activeAtlasDraw = nullptr;
 thread_local unsigned int g_activeAtlasCount = 0;
@@ -188,6 +192,19 @@ AtlasPassiveObserver* acquireObserver() noexcept {
 
 void releaseObserver() noexcept {
     g_activeCallbacks.fetch_sub(1, std::memory_order_release);
+}
+
+EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
+    // This timestamp marks the app's EGL buffer-submission boundary, not the
+    // physical display presentation time or GPU completion.
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const auto monotonicNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer && monotonicNs > 0)
+        observer->recordFrameStart(static_cast<std::uint64_t>(monotonicNs));
+    releaseObserver();
+    return g_originalEglSwapBuffers
+        ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
 }
 
 void hookedBatchDraw(void* self) {
@@ -562,6 +579,23 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_increaseTotalQuadsHooked = true;
+    }
+
+    // Optional frame cadence hook: sample at EGL swap submission. Failure is
+    // non-fatal; all original Cocos drawing and observer hooks remain intact.
+    if (!g_eglSwapBuffersHooked) {
+        void* eglSwapBuffers = dlsym(RTLD_DEFAULT, "eglSwapBuffers");
+        Dl_info eglInfo{};
+        if (eglSwapBuffers && dladdr(eglSwapBuffers, &eglInfo) && eglInfo.dli_fname &&
+            std::strcmp(basenameOf(eglInfo.dli_fname), "libEGL.so") == 0) {
+            if (DobbyHook(eglSwapBuffers, reinterpret_cast<void*>(hookedEglSwapBuffers),
+                          reinterpret_cast<void**>(&g_originalEglSwapBuffers)) == 0 &&
+                g_originalEglSwapBuffers) {
+                g_eglSwapBuffersHooked = true;
+            } else {
+                g_originalEglSwapBuffers = nullptr;
+            }
+        }
     }
 
     g_observer.store(observer, std::memory_order_release);
