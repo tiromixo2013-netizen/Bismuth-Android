@@ -59,6 +59,14 @@ jobs:
           grep -q 'bismuth_indirect_command_buffer' exported-symbols.txt
           grep -q 'bismuth_indexed_command_buffer' exported-symbols.txt
           grep -q 'bismuth_atlas_element_index_buffer' exported-symbols.txt
+          grep -q 'bismuth_observer_begin_frame' exported-symbols.txt
+          grep -q 'bismuth_observer_record_batch_draw' exported-symbols.txt
+          grep -q 'bismuth_observer_record_sprite_transform' exported-symbols.txt
+          grep -q 'bismuth_observer_record_quad_write' exported-symbols.txt
+          grep -q 'bismuth_observer_record_structural_mutation' exported-symbols.txt
+          grep -q 'bismuth_observer_record_dirty_upload' exported-symbols.txt
+          grep -q 'bismuth_observer_invalidate_unknown_mutation' exported-symbols.txt
+          grep -q 'bismuth_observer_snapshot' exported-symbols.txt
           grep -q 'bismuth_destroy' exported-symbols.txt
       - name: Upload Android ARM64 library
         uses: actions/upload-artifact@v4
