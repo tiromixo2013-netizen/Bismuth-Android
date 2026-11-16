@@ -21,6 +21,7 @@ namespace bismuth::shaders {
 inline constexpr const char* classify = R\"BSHADER(${BISMUTH_CLASSIFY_SHADER})BSHADER\";
 inline constexpr const char* offsets = R\"BSHADER(${BISMUTH_OFFSETS_SHADER})BSHADER\";
 inline constexpr const char* scatter = R\"BSHADER(${BISMUTH_SCATTER_SHADER})BSHADER\";
+inline constexpr const char* atlasIndices = R\"BSHADER(${BISMUTH_ATLAS_INDICES_SHADER})BSHADER\";
 }
 ")
 
