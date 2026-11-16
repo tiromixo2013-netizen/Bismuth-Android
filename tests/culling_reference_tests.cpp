@@ -70,7 +70,7 @@ int main() {
     assert(makeIndexedDrawCommand(7u, command));
     assert(command.count == 42u && command.instanceCount == 1u &&
            command.firstIndex == 0u && command.baseVertex == 0 &&
-           command.baseInstance == 0u);
+           command.reservedMustBeZero == 0u);
     assert(makeIndexedDrawCommand(0u, command));
     assert(command.count == 0u && command.instanceCount == 0u);
     assert(!makeIndexedDrawCommand(kAtlasMaxQuads16 + 1u, command));
