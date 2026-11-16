@@ -2,4 +2,6 @@
 #include "bismuth/culling_types.hpp"
 namespace bismuth {
 CullResult cullStable(const std::vector<Candidate>& candidates, const Rect& view);
+// Returns payloads for visible candidates in stable input/painter order.
+std::vector<std::uint32_t> cullStablePayloads(const std::vector<Candidate>& candidates, const Rect& view);
 }
