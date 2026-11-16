@@ -5,10 +5,14 @@
 #include <string>
 #include <vector>
 #include "bismuth/android_api.h"
+#include "bismuth/atlas_observation.hpp"
 #include "bismuth/gles31_culler.hpp"
 
 namespace {
-struct BismuthInstance { bismuth::Gles31Culler culler; };
+struct BismuthInstance {
+    bismuth::Gles31Culler culler;
+    bismuth::AtlasPassiveObserver observer;
+};
 void writeError(char* out, std::uint32_t capacity, const std::string& message) {
     if (!out || capacity == 0) return;
     const auto n = message.size() < capacity - 1 ? message.size() : capacity - 1;
@@ -17,16 +21,19 @@ void writeError(char* out, std::uint32_t capacity, const std::string& message) {
 }
 static_assert(sizeof(BismuthCandidate) == sizeof(bismuth::Candidate),
               "C API candidate layout must match the GLES shader record");
+static_assert(sizeof(BismuthAtlasTelemetry) == sizeof(bismuth::AtlasObservationSnapshot),
+              "C API telemetry layout must match the observer snapshot");
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
     return JNI_VERSION_1_6;
 }
 extern "C" const char* bismuth_android_build_id() {
-    return "Bismuth-Android 0.4.0-c-api";
+    return "Bismuth-Android 0.4.1-observer-api";
 }
 extern "C" std::uint32_t bismuth_android_capabilities() {
-    return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE | BISMUTH_CAP_ATLAS_INDEX_OUTPUT;
+    return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
+           BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API;
 }
 extern "C" void* bismuth_create() {
     return new (std::nothrow) BismuthInstance{};
@@ -73,6 +80,50 @@ extern "C" std::uint32_t bismuth_indexed_command_buffer(void* handle) {
 extern "C" std::uint32_t bismuth_atlas_element_index_buffer(void* handle) {
     return handle ? static_cast<BismuthInstance*>(handle)->culler.atlasElementIndexBuffer() : 0u;
 }
+
+extern "C" void bismuth_observer_begin_frame(void* handle) {
+    if (handle) static_cast<BismuthInstance*>(handle)->observer.beginFrame();
+}
+extern "C" void bismuth_observer_record_batch_draw(void* handle, std::uint32_t childCount) {
+    if (handle) static_cast<BismuthInstance*>(handle)->observer.recordBatchDraw(childCount);
+}
+extern "C" void bismuth_observer_record_sprite_transform(void* handle, int knownBaseImplementation) {
+    if (handle) static_cast<BismuthInstance*>(handle)->observer.recordSpriteTransform(knownBaseImplementation != 0);
+}
+extern "C" void bismuth_observer_record_quad_write(void* handle, int originalCallSucceeded) {
+    if (handle) static_cast<BismuthInstance*>(handle)->observer.recordQuadWrite(originalCallSucceeded != 0);
+}
+extern "C" void bismuth_observer_record_structural_mutation(void* handle, int originalCallSucceeded) {
+    if (handle) static_cast<BismuthInstance*>(handle)->observer.recordStructuralMutation(originalCallSucceeded != 0);
+}
+extern "C" void bismuth_observer_record_dirty_upload(void* handle, int originalUploadSucceeded,
+                                                       std::uint32_t quadCount) {
+    if (handle) static_cast<BismuthInstance*>(handle)->observer.recordDirtyUpload(
+        originalUploadSucceeded != 0, quadCount);
+}
+extern "C" void bismuth_observer_invalidate_unknown_mutation(void* handle) {
+    if (handle) static_cast<BismuthInstance*>(handle)->observer.invalidateUnknownMutation();
+}
+extern "C" int bismuth_observer_snapshot(void* handle, BismuthAtlasTelemetry* telemetry,
+                                          std::uint64_t* slotsRevision,
+                                          std::uint64_t* contentRevision) {
+    if (!handle || !telemetry) return -1;
+    const auto* instance = static_cast<const BismuthInstance*>(handle);
+    const auto counters = instance->observer.snapshot();
+    telemetry->batch_draw_calls = counters.batchDrawCalls;
+    telemetry->sprite_transform_calls = counters.spriteTransformCalls;
+    telemetry->unknown_transform_overrides = counters.unknownTransformOverrides;
+    telemetry->quad_writes = counters.quadWrites;
+    telemetry->structural_mutations = counters.structuralMutations;
+    telemetry->dirty_uploads = counters.dirtyUploads;
+    telemetry->uploaded_quads = counters.uploadedQuads;
+    telemetry->max_children_in_batch = counters.maxChildrenInBatch;
+    const auto revision = instance->observer.revision();
+    if (slotsRevision) *slotsRevision = revision.slots;
+    if (contentRevision) *contentRevision = revision.content;
+    return 0;
+}
+
 extern "C" void bismuth_destroy(void* handle) {
     // Call while the GLES context that owns this instance is current.
     delete static_cast<BismuthInstance*>(handle);
