@@ -1,0 +1,48 @@
+#version 310 es
+precision highp float;
+precision highp int;
+
+// Cocos2d atlas VBO layout: four vertices per quad, 24 bytes per vertex.
+// Each vertex is six 32-bit words: xyz float, rgba8 packed word, uv float2.
+layout(local_size_x = 128) in;
+layout(std430, binding = 0) readonly buffer AtlasVertexWords { uint vertexWords[]; };
+struct Candidate { vec4 bounds; uint payload; uint pad0; uint pad1; uint pad2; };
+layout(std430, binding = 1) writeonly buffer Candidates { Candidate items[]; };
+uniform mat4 uMvp;
+uniform uint uCount;
+uniform uint uStartQuad;
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= uCount) return;
+
+    vec2 lo = vec2(3.402823e+38);
+    vec2 hi = vec2(-3.402823e+38);
+    bool conservativeVisible = false;
+    uint quadWordBase = (uStartQuad + i) * 24u;
+
+    for (uint vertex = 0u; vertex < 4u; ++vertex) {
+        uint base = quadWordBase + vertex * 6u;
+        vec3 position = vec3(
+            uintBitsToFloat(vertexWords[base]),
+            uintBitsToFloat(vertexWords[base + 1u]),
+            uintBitsToFloat(vertexWords[base + 2u]));
+        vec4 clip = uMvp * vec4(position, 1.0);
+        if (any(isnan(clip)) || any(isinf(clip)) || clip.w <= 0.000001) {
+            conservativeVisible = true;
+            break;
+        }
+        vec2 ndc = clip.xy / clip.w;
+        lo = min(lo, ndc);
+        hi = max(hi, ndc);
+    }
+
+    Candidate candidate;
+    candidate.bounds = conservativeVisible ? vec4(-2.0, -2.0, 2.0, 2.0)
+                                            : vec4(lo, hi);
+    candidate.payload = uStartQuad + i;
+    candidate.pad0 = 0u;
+    candidate.pad1 = 0u;
+    candidate.pad2 = 0u;
+    items[i] = candidate;
+}
