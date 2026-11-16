@@ -45,7 +45,7 @@ public:
     ScopedComputeState() {
         glGetIntegerv(GL_CURRENT_PROGRAM, &program_);
         glGetIntegerv(GL_SHADER_STORAGE_BUFFER_BINDING, &genericStorage_);
-        for (GLuint i = 0; i < 5; ++i) {
+        for (GLuint i = 0; i < 6; ++i) {
             glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, i, &indexedStorage_[i]);
             glGetInteger64i_v(GL_SHADER_STORAGE_BUFFER_START, i, &indexedStorageStart_[i]);
             glGetInteger64i_v(GL_SHADER_STORAGE_BUFFER_SIZE, i, &indexedStorageSize_[i]);
@@ -70,9 +70,9 @@ public:
 private:
     GLint program_ = 0;
     GLint genericStorage_ = 0;
-    GLint indexedStorage_[5] = {0, 0, 0, 0, 0};
-    GLint64 indexedStorageStart_[5] = {0, 0, 0, 0, 0};
-    GLint64 indexedStorageSize_[5] = {0, 0, 0, 0, 0};
+    GLint indexedStorage_[6] = {0, 0, 0, 0, 0, 0};
+    GLint64 indexedStorageStart_[6] = {0, 0, 0, 0, 0, 0};
+    GLint64 indexedStorageSize_[6] = {0, 0, 0, 0, 0, 0};
 };
 
 bool bufferData(GLuint id, GLsizeiptr bytes) {
@@ -142,7 +142,7 @@ bool Gles31Culler::initialize(std::string* error) {
     glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &maxWorkgroupSizeX);
     glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &maxWorkgroupCountX);
     glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &maxStorageBlockSize);
-    if (maxBindings < 5 || maxInvocations < static_cast<GLint>(kWorkgroupSize) ||
+    if (maxBindings < 6 || maxInvocations < static_cast<GLint>(kWorkgroupSize) ||
         maxWorkgroupSizeX < static_cast<GLint>(kWorkgroupSize) ||
         maxWorkgroupCountX < static_cast<GLint>(kMaxGroups) ||
         maxStorageBlockSize < static_cast<GLint64>(kMaxCandidates * sizeof(Candidate))) {
@@ -345,13 +345,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, groupOffsets_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, visibleIndices_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, candidates_);
-    glDispatchCompute(groups, 1, 1);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-    glUseProgram(atlasIndicesProgram_);
-    glUniform1ui(glGetUniformLocation(atlasIndicesProgram_, "uCandidateCount"), count);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, visibleIndices_);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, atlasElementIndices_);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indexedCommand_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, atlasElementIndices_);
     glDispatchCompute(groups, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT |
                     GL_ELEMENT_ARRAY_BARRIER_BIT);
