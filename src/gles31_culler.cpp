@@ -209,6 +209,13 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
         clearIndexedCommand(indexedCommand_);
         return false;
     }
+    if (candidates.size() > kMaxCandidates) {
+        if (error) *error = "Candidate upload exceeds the 16384 candidate prototype limit";
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
+        return false;
+    }
     for (const Candidate& candidate : candidates) {
         if (!isValidAtlasSlot(candidate.payload, atlasCapacity)) {
             if (error) *error = "Candidate payload is outside the current atlas slot range";
@@ -217,13 +224,6 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
             clearIndexedCommand(indexedCommand_);
             return false;
         }
-    }
-    if (candidates.size() > kMaxCandidates) {
-        if (error) *error = "Candidate upload exceeds the 16384 candidate prototype limit";
-        uploadedCount_ = uploadedAtlasCapacity_ = 0;
-        clearIndirectCommand(indirectCommand_);
-        clearIndexedCommand(indexedCommand_);
-        return false;
     }
     if (candidates.empty()) {
         uploadedCount_ = uploadedAtlasCapacity_ = 0;
