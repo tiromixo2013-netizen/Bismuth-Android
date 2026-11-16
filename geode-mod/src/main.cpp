@@ -1,38 +1,50 @@
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
 
+#include "bismuth/cocos_hooks.hpp"
+
 using namespace geode::prelude;
 
 namespace {
-bool g_prototypePreference = false;
+bismuth::AtlasPassiveObserver g_observer;
+bool g_hooksReady = false;
 
-void reportState() {
-    auto diagnostics = Mod::get()->getSettingValue<bool>("diagnostics");
-    if (diagnostics) {
-        log::info("Bismuth Geode shell: prototype preference is {}. Renderer bridge is not connected in this package.",
-            g_prototypePreference ? "ON" : "OFF");
-    }
+void applyGpuBridgeSetting(bool enabled) {
+    const bool active = enabled && g_hooksReady;
+    bismuth::setGpuDrawBridgeEnabled(active);
+    log::info("Bismuth GPU draw bridge: {} (hooks ready: {})",
+        active ? "ON" : "OFF", g_hooksReady ? "yes" : "no");
 }
 }
 
 $on_mod(Loaded) {
-    g_prototypePreference = Mod::get()->getSettingValue<bool>("prototype-enabled");
-    reportState();
+    std::string error;
+    g_hooksReady = bismuth::installCocosPassiveHooks(&g_observer, &error);
+    if (g_hooksReady) {
+        log::info("Bismuth: verified Geometry Dash 2.2081 Cocos hooks installed.");
+    } else {
+        log::warn("Bismuth: GPU bridge unavailable; original renderer remains active. Reason: {}", error);
+    }
 
-    listenForSettingChanges<bool>("prototype-enabled", [](bool enabled) {
-        g_prototypePreference = enabled;
-        reportState();
+    const bool enabled = Mod::get()->getSettingValue<bool>("gpu-draw-bridge-enabled");
+    applyGpuBridgeSetting(enabled);
+
+    listenForSettingChanges<bool>("gpu-draw-bridge-enabled", [](bool value) {
+        applyGpuBridgeSetting(value);
         if (Mod::get()->getSettingValue<bool>("diagnostics")) {
             Notification::create(
-                enabled
-                    ? "Bismuth preference set to ON (renderer bridge not connected)"
-                    : "Bismuth preference set to OFF",
+                value && g_hooksReady
+                    ? "Bismuth GPU draw bridge enabled (experimental)"
+                    : "Bismuth GPU draw bridge disabled or unavailable",
                 NotificationIcon::Info
             )->show();
         }
     });
 
-    listenForSettingChanges<bool>("diagnostics", [](bool) {
-        reportState();
+    listenForSettingChanges<bool>("diagnostics", [](bool enabled) {
+        if (enabled) {
+            log::info("Bismuth diagnostics enabled; hooks ready: {}, GPU bridge: {}",
+                g_hooksReady, bismuth::isGpuDrawBridgeEnabled());
+        }
     });
 }
