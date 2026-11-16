@@ -50,6 +50,7 @@ private:
     GetQueryObjectui64vFn getQueryObjectui64v_ = nullptr;
     GLuint queries_[kQueryCount]{};
     bool pending_[kQueryCount]{};
+    bool discardPending_[kQueryCount]{};
     bool initialized_ = false;
     bool active_ = false;
     std::uint32_t activeSlot_ = 0;
