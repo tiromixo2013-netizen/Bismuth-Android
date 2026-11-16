@@ -39,7 +39,7 @@ the 20-byte command layout.
 This helper is a correctness oracle for a future compute shader; it is not
 used by the Android renderer and does not claim a GPU performance improvement.
 
-## GPU output now carries atlas slot IDs
+## GPU output now carries validated atlas slot IDs
 
 The scatter pass now reads each visible candidate's `payload` and writes that
 value to the compacted output buffer, rather than writing the candidate's array
@@ -87,7 +87,7 @@ indirect drawing consumes a separate five-word command:
 
 Never reinterpret the four-word arrays command as an indexed command.
 
-## Remaining invariants before GPU implementation
+## Remaining invariants before live renderer integration
 
 1. **Candidate mapping:** prove that every culling candidate identifies the
    current atlas slot throughout dispatch-to-draw. Structural mutations must
