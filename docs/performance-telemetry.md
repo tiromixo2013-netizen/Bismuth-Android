@@ -162,3 +162,20 @@ not a perfectly uninstrumented baseline: the pass-through detour cost remains.
 Use it to compare measurement-work overhead, not to claim zero-hook overhead.
 The switch uses a relaxed atomic flag and does not publish or guard observer
 memory; callers must still obey observer lifetime and render-thread rules.
+
+
+## Lazy GPU draw-bridge hook installation
+
+The passive Cocos hook installer no longer installs the process-wide
+`glDrawElements` detour. That detour is installed on the first explicit
+`bismuth_set_gpu_draw_bridge_enabled(1)` request. The bridge is marked enabled
+only after Dobby reports a successful hook and returns the original function.
+If symbol resolution or hook installation fails, the bridge remains disabled
+and the normal Cocos/GLES path is preserved. Disabling the bridge keeps the
+installed trampoline in place (safe process-lifetime behavior), but the detour
+immediately forwards to the original GLES function. Thus a normal passive
+telemetry session has no Bismuth `glDrawElements` detour at all.
+
+This is a code-path reduction, not a measured FPS claim. The first opt-in
+activation performs symbol lookup and hook installation and should be done
+before controlled gameplay/render stress, not in a frame-critical callback.
