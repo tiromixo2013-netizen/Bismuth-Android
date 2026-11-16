@@ -11,7 +11,7 @@ import requests
 
 LEVEL_ID = "118509879"
 SECRET = "Wmfd2893gb7"
-GDBROWSER_URL = f"https://gdbrowser.com/api/level/{LEVEL_ID}?download=true"
+GDBROWSER_URL = f"https://gdbrowser.com/api/level/{LEVEL_ID}?download"
 ENDPOINTS = [
     ("Boomlings official", "https://www.boomlings.com/database/downloadGJLevel22.php"),
     ("GDProxy", "https://gdproxy.net/database/downloadGJLevel22.php"),
@@ -73,11 +73,18 @@ def main():
         print(f"GDBrowser API: HTTP {response.status_code}")
         response.raise_for_status()
         payload = response.json()
-        if isinstance(payload, dict) and payload.get("data"):
-            level = decode_payload(payload["data"])
-            save_level(level, "GDBrowser API download=true", response.status_code)
-            return
-        errors.append(f"GDBrowser: JSON response has no data field (keys={list(payload) if isinstance(payload, dict) else type(payload).__name__})")
+        if isinstance(payload, dict):
+            # GDBrowser's download flag is presence-based (?download), not download=true.
+            candidates = ("data", "levelData", "levelString", "level_string", "level")
+            for key in candidates:
+                value = payload.get(key)
+                if isinstance(value, str) and value:
+                    level = decode_payload(value)
+                    save_level(level, f"GDBrowser API ?download (field={key})", response.status_code)
+                    return
+            errors.append(f"GDBrowser: download response has no recognized level payload (keys={list(payload)})")
+        else:
+            errors.append(f"GDBrowser: unexpected JSON type {type(payload).__name__}")
     except Exception as exc:
         errors.append(f"GDBrowser: {type(exc).__name__}: {exc}")
 
