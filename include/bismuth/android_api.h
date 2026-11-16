@@ -69,6 +69,9 @@ BISMUTH_API uint32_t bismuth_atlas_element_index_buffer(void* handle);
  * Returns 0 on success, -1 for invalid handle, or -2 on validation/install failure.
  */
 BISMUTH_API int bismuth_install_cocos_hooks(void* handle, char* error, uint32_t error_capacity);
+/* Automatic JNI_OnLoad hook status: 1=installed, -1=allocation failure, -2=validation/install failure, 0=not attempted. */
+BISMUTH_API int bismuth_auto_hook_status(void);
+BISMUTH_API const char* bismuth_auto_hook_error(void);
 
 /*
  * Passive observer event API. These functions record telemetry; the Cocos
