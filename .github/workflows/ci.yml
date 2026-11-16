@@ -60,6 +60,7 @@ jobs:
           grep -q 'bismuth_indexed_command_buffer' exported-symbols.txt
           grep -q 'bismuth_atlas_element_index_buffer' exported-symbols.txt
           grep -q 'bismuth_observer_begin_frame' exported-symbols.txt
+          grep -q 'bismuth_observer_record_frame_start' exported-symbols.txt
           grep -q 'bismuth_observer_record_batch_draw' exported-symbols.txt
           grep -q 'bismuth_observer_record_sprite_transform' exported-symbols.txt
           grep -q 'bismuth_observer_record_quad_write' exported-symbols.txt
