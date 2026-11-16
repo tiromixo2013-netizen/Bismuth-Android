@@ -1,8 +1,34 @@
 #pragma once
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include "bismuth/culling_types.hpp"
-#include <GLES3/gl31.h>
+#include <cstdint>
 #include <string>
+#include <vector>
+
+// Geode's Android Cocos headers alias the GLES vertex-array entry points to
+// OES symbols. Those macros collide with the GLES 3.1 prototypes. Temporarily
+// hide only those aliases while parsing the official GLES header, then restore
+// the Cocos compatibility macros for the rest of the translation unit.
+#pragma push_macro("glBindVertexArray")
+#pragma push_macro("glDeleteVertexArrays")
+#pragma push_macro("glGenVertexArrays")
+#pragma push_macro("glBindVertexArrayOES")
+#pragma push_macro("glDeleteVertexArraysOES")
+#pragma push_macro("glGenVertexArraysOES")
+#undef glBindVertexArray
+#undef glDeleteVertexArrays
+#undef glGenVertexArrays
+#undef glBindVertexArrayOES
+#undef glDeleteVertexArraysOES
+#undef glGenVertexArraysOES
+#include <GLES3/gl31.h>
+#pragma pop_macro("glGenVertexArraysOES")
+#pragma pop_macro("glDeleteVertexArraysOES")
+#pragma pop_macro("glBindVertexArrayOES")
+#pragma pop_macro("glGenVertexArrays")
+#pragma pop_macro("glDeleteVertexArrays")
+#pragma pop_macro("glBindVertexArray")
+
 namespace bismuth {
 class Gles31Culler {
 public:
@@ -10,15 +36,11 @@ public:
     ~Gles31Culler();
     Gles31Culler(const Gles31Culler&) = delete;
     Gles31Culler& operator=(const Gles31Culler&) = delete;
-    // Call only with the owning GLES 3.1 context current on this thread.
     bool initialize(std::string* error = nullptr);
     bool uploadCandidates(const std::vector<Candidate>& candidates, std::uint32_t atlasCapacity, std::string* error = nullptr);
-    // Build candidate bounds directly from the live Cocos atlas VBO on the GPU.
     bool generateAtlasCandidates(GLuint atlasVertexBuffer, std::uint32_t startQuad,
                                  std::uint32_t count, std::uint32_t atlasCapacity,
                                  const float* mvpColumnMajor, std::string* error = nullptr);
-    // candidateCount must match the most recently uploaded candidate count.
-    // A zero count writes an indirect command with instanceCount=0.
     bool dispatch(const Rect& view, std::uint32_t candidateCount, std::string* error = nullptr);
     bool isInitialized() const noexcept {
         return classifyProgram_ != 0 && atlasCandidatesProgram_ != 0 && offsetsProgram_ != 0 && scatterProgram_ != 0 &&
@@ -29,11 +51,8 @@ public:
     GLuint visibleIndexBuffer() const noexcept { return visibleIndices_; }
     GLuint indirectCommandBuffer() const noexcept { return indirectCommand_; }
     GLuint indexedCommandBuffer() const noexcept { return indexedCommand_; }
-    // Packed 16-bit atlas element indices; bind as GL_ELEMENT_ARRAY_BUFFER and draw with GL_UNSIGNED_SHORT.
     GLuint atlasElementIndexBuffer() const noexcept { return atlasElementIndices_; }
     std::uint32_t capacity() const noexcept { return capacity_; }
-    // Call before the GL context is destroyed or lost. All GL methods, including
-    // destruction/reset, require the owning context to be current.
     void reset() noexcept;
 private:
     GLuint classifyProgram_ = 0, atlasCandidatesProgram_ = 0, offsetsProgram_ = 0, scatterProgram_ = 0;
