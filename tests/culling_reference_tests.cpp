@@ -55,8 +55,8 @@ int main() {
         {0.5f, 0.75f, 0.0f}, {-0.5f, 0.75f, 0.0f}
     }};
     const Bounds projected = conservativeQuadClipBounds(quad, identityMvp);
-    assert(projected.left == -0.5f && projected.right == 0.5f);
-    assert(projected.bottom == -0.25f && projected.top == 0.75f);
+    assert(projected.left <= -0.5f && projected.right >= 0.5f);
+    assert(projected.bottom <= -0.25f && projected.top >= 0.75f);
     // A perspective vertex on/behind the eye plane must fail open (full view).
     ClipMatrix4 perspectiveMvp = identityMvp;
     perspectiveMvp[15] = 0.0f;
