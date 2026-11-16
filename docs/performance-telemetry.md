@@ -48,3 +48,20 @@ the complete frame. Do not feed batch-draw entry/exit timestamps as frame
 starts, and do not label these statistics as FPS until a reliable frame-start
 callback is integrated and tested. At present this API is testable with
 synthetic timestamps only.
+
+
+## Verified batch child-count observation
+
+The batch-draw hook now samples the child-array count before calling the original
+`CCSpriteBatchNode::draw()` function. For the one target ELF Build ID accepted
+by the hook, static disassembly established the child-array pointer at
+`CCSpriteBatchNode + 0x148` and its count field at
+`childArray + 0x38`. The reader performs two bounded metadata copies and does
+not walk child pointers or alter game state. A null pointer or implausible count
+fails closed to zero.
+
+`max_children_in_batch` is therefore now populated from the observed batch
+metadata. It is a child-entry count, not a count of successful `updateTransform()`
+calls: null entries and subclass dispatch may make those differ. The timing
+counter still measures the complete CPU wall time of the original batch draw,
+including the per-child virtual-call loop and atlas submission overhead.
