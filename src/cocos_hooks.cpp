@@ -23,16 +23,38 @@ constexpr char kBatchDrawSymbol[] = "_ZN7cocos2d17CCSpriteBatchNode4drawEv";
 constexpr char kUpdateQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10updateQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
 constexpr char kRemoveAllQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas14removeAllQuadsEv";
 constexpr char kResizeCapacitySymbol[] = "_ZN7cocos2d14CCTextureAtlas14resizeCapacityEj";
+constexpr char kInsertQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10insertQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
+constexpr char kInsertQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas11insertQuadsEPNS_19_ccV3F_C4B_T2F_QuadEjj";
+constexpr char kInsertQuadFromIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas19insertQuadFromIndexEjj";
+constexpr char kRemoveQuadAtIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas17removeQuadAtIndexEj";
+constexpr char kRemoveQuadsAtIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas18removeQuadsAtIndexEjj";
+constexpr char kMoveQuadsThreeSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjjj";
+constexpr char kMoveQuadsTwoSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjj";
+constexpr char kIncreaseTotalQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas22increaseTotalQuadsWithEj";
 
 using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
 using RemoveAllQuadsFn = void (*)(void*);
 using ResizeCapacityFn = bool (*)(void*, unsigned int);
+using InsertQuadFn = void (*)(void*, void*, unsigned int);
+using InsertQuadsFn = void (*)(void*, void*, unsigned int, unsigned int);
+using TwoIndexFn = void (*)(void*, unsigned int, unsigned int);
+using OneIndexFn = void (*)(void*, unsigned int);
+using ThreeIndexFn = void (*)(void*, unsigned int, unsigned int, unsigned int);
+using IncreaseQuadsFn = void (*)(void*, unsigned int);
 
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
 RemoveAllQuadsFn g_originalRemoveAllQuads = nullptr;
 ResizeCapacityFn g_originalResizeCapacity = nullptr;
+InsertQuadFn g_originalInsertQuad = nullptr;
+InsertQuadsFn g_originalInsertQuads = nullptr;
+TwoIndexFn g_originalInsertQuadFromIndex = nullptr;
+OneIndexFn g_originalRemoveQuadAtIndex = nullptr;
+TwoIndexFn g_originalRemoveQuadsAtIndex = nullptr;
+ThreeIndexFn g_originalMoveQuadsThree = nullptr;
+TwoIndexFn g_originalMoveQuadsTwo = nullptr;
+IncreaseQuadsFn g_originalIncreaseTotalQuads = nullptr;
 std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
@@ -41,6 +63,14 @@ bool g_updateQuadHooked = false;
 bool g_batchDrawHooked = false;
 bool g_removeAllQuadsHooked = false;
 bool g_resizeCapacityHooked = false;
+bool g_insertQuadHooked = false;
+bool g_insertQuadsHooked = false;
+bool g_insertQuadFromIndexHooked = false;
+bool g_removeQuadAtIndexHooked = false;
+bool g_removeQuadsAtIndexHooked = false;
+bool g_moveQuadsThreeHooked = false;
+bool g_moveQuadsTwoHooked = false;
+bool g_increaseTotalQuadsHooked = false;
 
 const char* basenameOf(const char* path) {
     if (!path) return "";
@@ -138,6 +168,45 @@ void hookedRemoveAllQuads(void* self) {
     releaseObserver();
 }
 
+void recordStructuralMutation() {
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) observer->recordStructuralMutation(true);
+    releaseObserver();
+}
+
+void hookedInsertQuad(void* self, void* quad, unsigned int index) {
+    if (g_originalInsertQuad) g_originalInsertQuad(self, quad, index);
+    recordStructuralMutation();
+}
+void hookedInsertQuads(void* self, void* quads, unsigned int index, unsigned int amount) {
+    if (g_originalInsertQuads) g_originalInsertQuads(self, quads, index, amount);
+    recordStructuralMutation();
+}
+void hookedInsertQuadFromIndex(void* self, unsigned int from, unsigned int to) {
+    if (g_originalInsertQuadFromIndex) g_originalInsertQuadFromIndex(self, from, to);
+    recordStructuralMutation();
+}
+void hookedRemoveQuadAtIndex(void* self, unsigned int index) {
+    if (g_originalRemoveQuadAtIndex) g_originalRemoveQuadAtIndex(self, index);
+    recordStructuralMutation();
+}
+void hookedRemoveQuadsAtIndex(void* self, unsigned int index, unsigned int amount) {
+    if (g_originalRemoveQuadsAtIndex) g_originalRemoveQuadsAtIndex(self, index, amount);
+    recordStructuralMutation();
+}
+void hookedMoveQuadsThree(void* self, unsigned int from, unsigned int amount, unsigned int to) {
+    if (g_originalMoveQuadsThree) g_originalMoveQuadsThree(self, from, amount, to);
+    recordStructuralMutation();
+}
+void hookedMoveQuadsTwo(void* self, unsigned int from, unsigned int to) {
+    if (g_originalMoveQuadsTwo) g_originalMoveQuadsTwo(self, from, to);
+    recordStructuralMutation();
+}
+void hookedIncreaseTotalQuads(void* self, unsigned int amount) {
+    if (g_originalIncreaseTotalQuads) g_originalIncreaseTotalQuads(self, amount);
+    recordStructuralMutation();
+}
+
 bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
     std::uint32_t oldCapacity = 0;
     if (self) std::memcpy(&oldCapacity, static_cast<const std::uint8_t*>(self) + 0x50,
@@ -187,10 +256,26 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* updateQuad = dlsym(RTLD_DEFAULT, kUpdateQuadSymbol);
     void* removeAllQuads = dlsym(RTLD_DEFAULT, kRemoveAllQuadsSymbol);
     void* resizeCapacity = dlsym(RTLD_DEFAULT, kResizeCapacitySymbol);
+    void* insertQuad = dlsym(RTLD_DEFAULT, kInsertQuadSymbol);
+    void* insertQuads = dlsym(RTLD_DEFAULT, kInsertQuadsSymbol);
+    void* insertQuadFromIndex = dlsym(RTLD_DEFAULT, kInsertQuadFromIndexSymbol);
+    void* removeQuadAtIndex = dlsym(RTLD_DEFAULT, kRemoveQuadAtIndexSymbol);
+    void* removeQuadsAtIndex = dlsym(RTLD_DEFAULT, kRemoveQuadsAtIndexSymbol);
+    void* moveQuadsThree = dlsym(RTLD_DEFAULT, kMoveQuadsThreeSymbol);
+    void* moveQuadsTwo = dlsym(RTLD_DEFAULT, kMoveQuadsTwoSymbol);
+    void* increaseTotalQuads = dlsym(RTLD_DEFAULT, kIncreaseTotalQuadsSymbol);
     if (!symbolBelongsToTarget(batchDraw, module.path) ||
         !symbolBelongsToTarget(updateQuad, module.path) ||
         !symbolBelongsToTarget(removeAllQuads, module.path) ||
-        !symbolBelongsToTarget(resizeCapacity, module.path)) {
+        !symbolBelongsToTarget(resizeCapacity, module.path) ||
+        !symbolBelongsToTarget(insertQuad, module.path) ||
+        !symbolBelongsToTarget(insertQuads, module.path) ||
+        !symbolBelongsToTarget(insertQuadFromIndex, module.path) ||
+        !symbolBelongsToTarget(removeQuadAtIndex, module.path) ||
+        !symbolBelongsToTarget(removeQuadsAtIndex, module.path) ||
+        !symbolBelongsToTarget(moveQuadsThree, module.path) ||
+        !symbolBelongsToTarget(moveQuadsTwo, module.path) ||
+        !symbolBelongsToTarget(increaseTotalQuads, module.path)) {
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
     }
@@ -243,6 +328,71 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_resizeCapacityHooked = true;
+    }
+
+    if (!g_insertQuadHooked) {
+        if (DobbyHook(insertQuad, reinterpret_cast<void*>(hookedInsertQuad),
+                      reinterpret_cast<void**>(&g_originalInsertQuad)) != 0 || !g_originalInsertQuad) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::insertQuad observer";
+            return false;
+        }
+        g_insertQuadHooked = true;
+    }
+    if (!g_insertQuadsHooked) {
+        if (DobbyHook(insertQuads, reinterpret_cast<void*>(hookedInsertQuads),
+                      reinterpret_cast<void**>(&g_originalInsertQuads)) != 0 || !g_originalInsertQuads) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::insertQuads observer";
+            return false;
+        }
+        g_insertQuadsHooked = true;
+    }
+    if (!g_insertQuadFromIndexHooked) {
+        if (DobbyHook(insertQuadFromIndex, reinterpret_cast<void*>(hookedInsertQuadFromIndex),
+                      reinterpret_cast<void**>(&g_originalInsertQuadFromIndex)) != 0 || !g_originalInsertQuadFromIndex) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::insertQuadFromIndex observer";
+            return false;
+        }
+        g_insertQuadFromIndexHooked = true;
+    }
+    if (!g_removeQuadAtIndexHooked) {
+        if (DobbyHook(removeQuadAtIndex, reinterpret_cast<void*>(hookedRemoveQuadAtIndex),
+                      reinterpret_cast<void**>(&g_originalRemoveQuadAtIndex)) != 0 || !g_originalRemoveQuadAtIndex) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::removeQuadAtIndex observer";
+            return false;
+        }
+        g_removeQuadAtIndexHooked = true;
+    }
+    if (!g_removeQuadsAtIndexHooked) {
+        if (DobbyHook(removeQuadsAtIndex, reinterpret_cast<void*>(hookedRemoveQuadsAtIndex),
+                      reinterpret_cast<void**>(&g_originalRemoveQuadsAtIndex)) != 0 || !g_originalRemoveQuadsAtIndex) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::removeQuadsAtIndex observer";
+            return false;
+        }
+        g_removeQuadsAtIndexHooked = true;
+    }
+    if (!g_moveQuadsThreeHooked) {
+        if (DobbyHook(moveQuadsThree, reinterpret_cast<void*>(hookedMoveQuadsThree),
+                      reinterpret_cast<void**>(&g_originalMoveQuadsThree)) != 0 || !g_originalMoveQuadsThree) {
+            if (error) *error = "Dobby failed to install three-argument CCTextureAtlas::moveQuadsFromIndex observer";
+            return false;
+        }
+        g_moveQuadsThreeHooked = true;
+    }
+    if (!g_moveQuadsTwoHooked) {
+        if (DobbyHook(moveQuadsTwo, reinterpret_cast<void*>(hookedMoveQuadsTwo),
+                      reinterpret_cast<void**>(&g_originalMoveQuadsTwo)) != 0 || !g_originalMoveQuadsTwo) {
+            if (error) *error = "Dobby failed to install two-argument CCTextureAtlas::moveQuadsFromIndex observer";
+            return false;
+        }
+        g_moveQuadsTwoHooked = true;
+    }
+    if (!g_increaseTotalQuadsHooked) {
+        if (DobbyHook(increaseTotalQuads, reinterpret_cast<void*>(hookedIncreaseTotalQuads),
+                      reinterpret_cast<void**>(&g_originalIncreaseTotalQuads)) != 0 || !g_originalIncreaseTotalQuads) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::increaseTotalQuadsWith observer";
+            return false;
+        }
+        g_increaseTotalQuadsHooked = true;
     }
 
     g_observer.store(observer, std::memory_order_release);
