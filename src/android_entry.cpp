@@ -14,6 +14,10 @@ struct BismuthInstance {
     bismuth::Gles31Culler culler;
     bismuth::AtlasPassiveObserver observer;
 };
+BismuthInstance* g_autoHookInstance = nullptr;
+int g_autoHookStatus = 0;
+std::string g_autoHookError;
+
 void writeError(char* out, std::uint32_t capacity, const std::string& message) {
     if (!out || capacity == 0) return;
     const auto n = message.size() < capacity - 1 ? message.size() : capacity - 1;
@@ -27,6 +31,24 @@ static_assert(sizeof(BismuthAtlasTelemetry) == sizeof(bismuth::AtlasObservationS
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
+    // APK injection loads Bismuth immediately after cocos2dcpp.
+    auto* instance = new (std::nothrow) BismuthInstance{};
+    if (!instance) {
+        g_autoHookStatus = -1;
+        g_autoHookError = "Failed to allocate the automatic passive-hook observer";
+        return JNI_VERSION_1_6;
+    }
+    std::string message;
+    if (bismuth::installCocosPassiveHooks(&instance->observer, &message)) {
+        g_autoHookInstance = instance;
+        g_autoHookStatus = 1;
+        g_autoHookError.clear();
+    } else {
+        g_autoHookStatus = -2;
+        g_autoHookError = message;
+        delete instance;
+    }
+    // A failed version check must never prevent the game itself from loading.
     return JNI_VERSION_1_6;
 }
 extern "C" const char* bismuth_android_build_id() {
@@ -81,6 +103,13 @@ extern "C" std::uint32_t bismuth_indexed_command_buffer(void* handle) {
 }
 extern "C" std::uint32_t bismuth_atlas_element_index_buffer(void* handle) {
     return handle ? static_cast<BismuthInstance*>(handle)->culler.atlasElementIndexBuffer() : 0u;
+}
+
+extern "C" int bismuth_auto_hook_status() {
+    return g_autoHookStatus;
+}
+extern "C" const char* bismuth_auto_hook_error() {
+    return g_autoHookError.c_str();
 }
 
 extern "C" int bismuth_install_cocos_hooks(void* handle, char* error, std::uint32_t errorCapacity) {
