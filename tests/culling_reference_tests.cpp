@@ -131,6 +131,7 @@ int main() {
     assert(observed.batchDrawCalls == 2u);
     assert(observed.batchDrawCpuNsTotal == 3500u);
     assert(observed.batchDrawCpuNsMax == 2300u);
+    assert(observed.batchDrawChildrenTotal == 32u);
     assert(observed.spriteTransformCalls == 2u);
     assert(observed.unknownTransformOverrides == 1u);
     assert(observed.quadWrites == 1u);
@@ -141,7 +142,8 @@ int main() {
     observation.beginFrame();
     const AtlasObservationSnapshot cleared = observation.snapshot();
     assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u &&
-           cleared.batchDrawCpuNsTotal == 0u && cleared.batchDrawCpuNsMax == 0u);
+           cleared.batchDrawCpuNsTotal == 0u && cleared.batchDrawCpuNsMax == 0u &&
+           cleared.batchDrawChildrenTotal == 0u);
     // Frame interval window: deterministic monotonic timestamps, bounded rolling
     // samples, nearest-rank percentiles, and rejection of backwards time.
     FrameIntervalWindow frameWindow;
