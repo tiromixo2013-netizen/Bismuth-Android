@@ -85,6 +85,12 @@ void clearIndirectCommand(GLuint commandBuffer) {
     const GLuint emptyCommand[4] = {6u, 0u, 0u, 0u};
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, commandBuffer);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(emptyCommand), emptyCommand);
+}
+
+void clearIndexedCommand(GLuint commandBuffer) {
+    const GLuint emptyCommand[5] = {0u, 0u, 0u, 0u, 0u};
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, commandBuffer);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(emptyCommand), emptyCommand);
     // Do not call glGetError() here: GLES exposes a context-wide sticky error
     // flag, so this helper could consume an unrelated error raised by the game.
     // The reset remains best-effort; callers must not consume the command after
@@ -100,13 +106,13 @@ void Gles31Culler::reset() noexcept {
     const GLuint programs[] = {classifyProgram_, offsetsProgram_, scatterProgram_};
     if (programs[0] || programs[1] || programs[2])
         glDeleteProgram(programs[0]), glDeleteProgram(programs[1]), glDeleteProgram(programs[2]);
-    const GLuint buffers[] = {candidates_, flags_, localOffsets_, groupSums_, groupOffsets_, visibleIndices_, indirectCommand_};
+    const GLuint buffers[] = {candidates_, flags_, localOffsets_, groupSums_, groupOffsets_, visibleIndices_, indirectCommand_, indexedCommand_};
     bool hasBuffer = false;
     for (GLuint buffer : buffers) hasBuffer = hasBuffer || buffer != 0;
-    if (hasBuffer) glDeleteBuffers(7, buffers);
+    if (hasBuffer) glDeleteBuffers(8, buffers);
     classifyProgram_ = offsetsProgram_ = scatterProgram_ = 0;
     candidates_ = flags_ = localOffsets_ = groupSums_ = 0;
-    groupOffsets_ = visibleIndices_ = indirectCommand_ = 0;
+    groupOffsets_ = visibleIndices_ = indirectCommand_ = indexedCommand_ = 0;
     capacity_ = groupCapacity_ = uploadedCount_ = 0;
 }
 
@@ -146,15 +152,16 @@ bool Gles31Culler::initialize(std::string* error) {
     if (!scatterProgram_) { reset(); return false; }
     glGenBuffers(1, &candidates_); glGenBuffers(1, &flags_); glGenBuffers(1, &localOffsets_);
     glGenBuffers(1, &groupSums_); glGenBuffers(1, &groupOffsets_); glGenBuffers(1, &visibleIndices_);
-    glGenBuffers(1, &indirectCommand_);
+    glGenBuffers(1, &indirectCommand_); glGenBuffers(1, &indexedCommand_);
     if (glGetError() != GL_NO_ERROR || !candidates_ || !flags_ || !localOffsets_ ||
-        !groupSums_ || !groupOffsets_ || !visibleIndices_ || !indirectCommand_) {
+        !groupSums_ || !groupOffsets_ || !visibleIndices_ || !indirectCommand_ || !indexedCommand_) {
         if (error) *error = "Failed to create GLES storage buffers";
         reset(); return false;
     }
     // Allocate the indirect command immediately so an empty-scene dispatch is valid
     // even before the first non-empty candidate upload.
     bufferData(indirectCommand_, 4 * sizeof(GLuint));
+    bufferData(indexedCommand_, 5 * sizeof(GLuint));
     if (glGetError() != GL_NO_ERROR) {
         if (error) *error = "Failed to allocate the indirect command buffer";
         reset(); return false;
@@ -187,7 +194,7 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
 }
 
 bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, std::string* error) {
-    if (!classifyProgram_ || !candidates_ || !indirectCommand_) {
+    if (!classifyProgram_ || !candidates_ || !indirectCommand_ || !indexedCommand_) {
         if (error) *error = "Culler is not initialized";
         return false;
     }
@@ -213,7 +220,7 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
 }
 
 bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* error) {
-    if (!indirectCommand_) {
+    if (!indirectCommand_ || !indexedCommand_) {
         if (error) *error = "Culler is not initialized";
         return false;
     }
@@ -221,6 +228,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     const auto failClosed = [&](const char* message) {
         uploadedCount_ = 0;
         clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
         if (error) *error = message;
         return false;
     };
@@ -231,6 +239,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     }
     if (count == 0) {
         clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
         uploadedCount_ = 0;
         return true;
     }
@@ -252,6 +261,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, groupSums_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, groupOffsets_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirectCommand_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, indexedCommand_);
     glDispatchCompute(1, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     glUseProgram(scatterProgram_);
