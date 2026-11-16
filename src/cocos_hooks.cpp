@@ -190,8 +190,18 @@ bool symbolBelongsToTarget(void* symbol, const std::string& targetPath) {
 }
 
 AtlasPassiveObserver* acquireObserver() noexcept {
+    // Most callbacks have no attached observer. Avoid an atomic RMW on that
+    // common pass-through path; the second pointer check closes the race with
+    // detach before the caller is allowed to dereference the observer.
+    AtlasPassiveObserver* observer = g_observer.load(std::memory_order_acquire);
+    if (!observer) return nullptr;
+
     g_activeCallbacks.fetch_add(1, std::memory_order_acq_rel);
-    return g_observer.load(std::memory_order_acquire);
+    if (g_observer.load(std::memory_order_acquire) != observer) {
+        g_activeCallbacks.fetch_sub(1, std::memory_order_release);
+        return nullptr;
+    }
+    return observer;
 }
 
 void releaseObserver() noexcept {
