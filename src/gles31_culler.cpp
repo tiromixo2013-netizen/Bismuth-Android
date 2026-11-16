@@ -188,7 +188,7 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
     bufferData(atlasElementIndices_, static_cast<GLsizeiptr>(newCapacity) * 3 * sizeof(GLuint));
     bufferData(indirectCommand_, 4 * sizeof(GLuint));
     if (glGetError() != GL_NO_ERROR) {
-        capacity_ = groupCapacity_ = uploadedCount_ = 0;
+        capacity_ = groupCapacity_ = uploadedCount_ = uploadedAtlasCapacity_ = 0;
         if (error) *error = "Failed to allocate GLES storage buffers";
         return false;
     }
@@ -241,7 +241,7 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
                     static_cast<GLsizeiptr>(candidates.size()) * sizeof(Candidate), candidates.data());
     if (glGetError() != GL_NO_ERROR) {
-        uploadedCount_ = 0;
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);
         if (error) *error = "Candidate upload failed";
@@ -276,7 +276,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         uploadedCount_ = uploadedAtlasCapacity_ = 0;
         return true;
     }
-    if (!classifyProgram_ || count > capacity_ || count != uploadedCount_) {
+    if (!classifyProgram_ || count > capacity_ || count != uploadedCount_ || uploadedAtlasCapacity_ == 0) {
         return failClosed("Culler is uninitialized or candidate count does not match the latest upload");
     }
     const GLuint groups = (count + kWorkgroupSize - 1u) / kWorkgroupSize;
