@@ -39,6 +39,21 @@ the 20-byte command layout.
 This helper is a correctness oracle for a future compute shader; it is not
 used by the Android renderer and does not claim a GPU performance improvement.
 
+## GPU output now carries atlas slot IDs
+
+The scatter pass now reads each visible candidate's `payload` and writes that
+value to the compacted output buffer, rather than writing the candidate's array
+index. The C API documents this as a caller-defined stable output ID; an atlas
+adapter must set it to the current quad slot. This lets the GPU produce the
+actual slot sequence needed by an indexed-atlas path without a CPU readback.
+The host reference helper and tests verify that payload IDs remain in stable
+input order and are omitted for culled candidates.
+
+The GLES state guard now preserves indexed SSBO bindings 0..4 because the
+scatter pass consumes the candidate buffer at binding 4. Devices must expose at
+least five SSBO binding points. This remains a standalone compute output: it
+does not yet build the five-word indexed indirect command or issue an atlas draw.
+
 ## Why a separate indexed path is required
 
 The current prototype writes a four-word `DrawArraysIndirectCommand`
