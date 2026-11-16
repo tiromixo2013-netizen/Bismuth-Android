@@ -67,6 +67,7 @@ jobs:
           grep -q 'bismuth_observer_record_dirty_upload' exported-symbols.txt
           grep -q 'bismuth_observer_invalidate_unknown_mutation' exported-symbols.txt
           grep -q 'bismuth_observer_snapshot' exported-symbols.txt
+          grep -q 'bismuth_install_cocos_hooks' exported-symbols.txt
           grep -q 'bismuth_destroy' exported-symbols.txt
       - name: Upload Android ARM64 library
         uses: actions/upload-artifact@v4
