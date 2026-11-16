@@ -61,7 +61,7 @@ element-array barrier follows it.
 
 The offsets pass also writes a separate five-word indexed-atlas command
 buffer (count = visibleSlotCount * 6, one instance when non-empty, zero
-first-index/base-vertex/base-instance). The original four-word arrays command
+first-index/base-vertex/reserved word). The original four-word arrays command
 remains separate and unchanged. The compacted EBO and command are now prepared
 as GPU outputs; this project still does not issue an indexed indirect atlas
 draw. GLES 3.1 provides glDrawElementsIndirect as a core command; no optional
@@ -73,7 +73,7 @@ integrated safely before using the draw path.
 ## Why a separate indexed path is required
 
 The current prototype writes a four-word `DrawArraysIndirectCommand`
-(`vertexCount, instanceCount, firstVertex, baseInstance`). GLES indexed
+(`count, instanceCount, first, reservedMustBeZero`). GLES indexed
 indirect drawing consumes a separate five-word command:
 
 | Word | Field | Meaning |
@@ -82,7 +82,7 @@ indirect drawing consumes a separate five-word command:
 | 1 | instanceCount | Number of instances |
 | 2 | firstIndex | Element-buffer offset in indices |
 | 3 | baseVertex | Added to each fetched index |
-| 4 | baseInstance | First instance |
+| 4 | reservedMustBeZero | Must be zero in GLES 3.1 |
 
 Never reinterpret the four-word arrays command as an indexed command.
 
