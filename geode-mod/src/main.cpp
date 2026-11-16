@@ -19,7 +19,7 @@ $on_mod(Loaded) {
     g_prototypePreference = Mod::get()->getSettingValue<bool>("prototype-enabled");
     reportState();
 
-    listenForSettingChanges("prototype-enabled", [](bool enabled) {
+    listenForSettingChanges<bool>("prototype-enabled", [](bool enabled) {
         g_prototypePreference = enabled;
         reportState();
         if (Mod::get()->getSettingValue<bool>("diagnostics")) {
@@ -32,7 +32,7 @@ $on_mod(Loaded) {
         }
     });
 
-    listenForSettingChanges("diagnostics", [](bool) {
+    listenForSettingChanges<bool>("diagnostics", [](bool) {
         reportState();
     });
 }
