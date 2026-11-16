@@ -155,6 +155,7 @@ sampling, ATrace batch sections, dirty-byte inspection, and observer counter
 updates. The EGL swap hook forwards directly to the original function without
 taking a timestamp. The experimental GPU draw bridge is controlled separately
 and remains disabled by default.
+When the GPU bridge is disabled, the atlas draw hook also skips saving and restoring its thread-local bridge context; it forwards directly through the original atlas draw path while retaining only the dirty-byte observation when telemetry is enabled.
 
 This switch does **not** remove already-installed Dobby trampolines, so it is
 not a perfectly uninstrumented baseline: the pass-through detour cost remains.
