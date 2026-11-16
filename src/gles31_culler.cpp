@@ -109,20 +109,20 @@ Gles31Culler::~Gles31Culler() { reset(); }
 void Gles31Culler::reset() noexcept {
     // GLES object deletion is context-dependent. The owner must call reset()
     // while the context that created these objects is current.
-    const GLuint programs[] = {classifyProgram_, atlasCandidatesProgram_, offsetsProgram_, scatterProgram_, atlasIndicesProgram_};
+    const GLuint programs[] = {classifyProgram_, atlasCandidatesProgram_, offsetsProgram_, scatterProgram_};
     for (GLuint program : programs) if (program) glDeleteProgram(program);
     const GLuint buffers[] = {candidates_, flags_, localOffsets_, groupSums_, groupOffsets_, visibleIndices_, indirectCommand_, indexedCommand_, atlasElementIndices_};
     bool hasBuffer = false;
     for (GLuint buffer : buffers) hasBuffer = hasBuffer || buffer != 0;
     if (hasBuffer) glDeleteBuffers(9, buffers);
-    classifyProgram_ = atlasCandidatesProgram_ = offsetsProgram_ = scatterProgram_ = atlasIndicesProgram_ = 0;
+    classifyProgram_ = atlasCandidatesProgram_ = offsetsProgram_ = scatterProgram_ = 0;
     candidates_ = flags_ = localOffsets_ = groupSums_ = 0;
     groupOffsets_ = visibleIndices_ = indirectCommand_ = indexedCommand_ = atlasElementIndices_ = 0;
     capacity_ = groupCapacity_ = uploadedCount_ = uploadedAtlasCapacity_ = 0;
 }
 
 bool Gles31Culler::initialize(std::string* error) {
-    if (classifyProgram_ || atlasCandidatesProgram_ || offsetsProgram_ || scatterProgram_ || atlasIndicesProgram_) {
+    if (classifyProgram_ || atlasCandidatesProgram_ || offsetsProgram_ || scatterProgram_) {
         if (error) *error = "Culler is already initialized; call reset() first";
         return false;
     }
@@ -157,8 +157,6 @@ bool Gles31Culler::initialize(std::string* error) {
     if (!offsetsProgram_) { reset(); return false; }
     scatterProgram_ = compileCompute(shaders::scatter, error);
     if (!scatterProgram_) { reset(); return false; }
-    atlasIndicesProgram_ = compileCompute(shaders::atlasIndices, error);
-    if (!atlasIndicesProgram_) { reset(); return false; }
     glGenBuffers(1, &candidates_); glGenBuffers(1, &flags_); glGenBuffers(1, &localOffsets_);
     glGenBuffers(1, &groupSums_); glGenBuffers(1, &groupOffsets_); glGenBuffers(1, &visibleIndices_);
     glGenBuffers(1, &indirectCommand_); glGenBuffers(1, &indexedCommand_); glGenBuffers(1, &atlasElementIndices_);
