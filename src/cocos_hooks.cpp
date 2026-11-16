@@ -202,27 +202,12 @@ void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* i
 }
 
 void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start) {
-    const bool previousInside = g_insideAtlasDraw;
-    void* previousAtlas = g_activeAtlasDraw;
-    const unsigned int previousCount = g_activeAtlasCount;
-    const unsigned int previousStart = g_activeAtlasStart;
-    g_insideAtlasDraw = true;
-    g_activeAtlasDraw = self;
-    g_activeAtlasCount = count;
-    g_activeAtlasStart = start;
-    std::uint8_t dirtyBefore = 0;
-    if (self) std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
-                          sizeof(dirtyBefore));
     if (g_originalDrawNumberOfQuads)
         g_originalDrawNumberOfQuads(self, count, start);
-    g_insideAtlasDraw = previousInside;
-    g_activeAtlasDraw = previousAtlas;
-    g_activeAtlasCount = previousCount;
-    g_activeAtlasStart = previousStart;
-    // The target clears dirty after issuing glBufferSubData, but GL success is
-    // not observable without stealing the game's GL error state. Invalidate
-    // cached quad data conservatively; do not report a confirmed upload.
-    if (dirtyBefore != 0 && count != 0) {
+    // Avoid reading private CCTextureAtlas offsets. The draw call may have
+    // uploaded changed quad data, so invalidate the cached revision
+    // conservatively whenever a non-empty atlas range is submitted.
+    if (count != 0) {
         AtlasPassiveObserver* observer = acquireObserver();
         if (observer) observer->invalidateQuadData();
         releaseObserver();
@@ -276,18 +261,14 @@ void hookedIncreaseTotalQuads(void* self, unsigned int amount) {
 }
 
 bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
-    std::uint32_t oldCapacity = 0;
-    if (self) std::memcpy(&oldCapacity, static_cast<const std::uint8_t*>(self) + 0x50,
-                          sizeof(oldCapacity));
     const bool result = g_originalResizeCapacity
         ? g_originalResizeCapacity(self, requestedCapacity) : false;
-    // A failed allocation can partially tear down atlas storage. Invalidate
-    // whenever a different capacity was requested, even if result is false.
-    if (oldCapacity != requestedCapacity) {
-        AtlasPassiveObserver* observer = acquireObserver();
-        if (observer) observer->recordStructuralMutation(true);
-        releaseObserver();
-    }
+    // Capacity changes can relocate atlas storage. Avoid depending on private
+    // object offsets; invalidate conservatively after every resize attempt.
+    (void)requestedCapacity;
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) observer->recordStructuralMutation(true);
+    releaseObserver();
     return result;
 }
 
