@@ -122,7 +122,7 @@ void Gles31Culler::reset() noexcept {
 }
 
 bool Gles31Culler::initialize(std::string* error) {
-    if (classifyProgram_ || offsetsProgram_ || scatterProgram_ || atlasIndicesProgram_) {
+    if (classifyProgram_ || atlasCandidatesProgram_ || offsetsProgram_ || scatterProgram_ || atlasIndicesProgram_) {
         if (error) *error = "Culler is already initialized; call reset() first";
         return false;
     }
@@ -151,7 +151,9 @@ bool Gles31Culler::initialize(std::string* error) {
     }
     classifyProgram_ = compileCompute(shaders::classify, error);
     if (!classifyProgram_) { reset(); return false; }
-    atlasCandidatesProgram_ = compileCompute(shaders::atlasCandidates, error);\n    if (!atlasCandidatesProgram_) { reset(); return false; }\n    offsetsProgram_ = compileCompute(shaders::offsets, error);
+    atlasCandidatesProgram_ = compileCompute(shaders::atlasCandidates, error);
+    if (!atlasCandidatesProgram_) { reset(); return false; }
+    offsetsProgram_ = compileCompute(shaders::offsets, error);
     if (!offsetsProgram_) { reset(); return false; }
     scatterProgram_ = compileCompute(shaders::scatter, error);
     if (!scatterProgram_) { reset(); return false; }
