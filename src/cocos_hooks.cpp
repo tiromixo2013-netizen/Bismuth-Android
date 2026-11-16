@@ -444,11 +444,15 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
 }
 
 void setGpuDrawBridgeEnabled(bool enabled) noexcept {
-    g_gpuDrawBridgeEnabled.store(enabled, std::memory_order_release);
+    // Hard safety lock: no public API or stale setting may enable the bridge.
+    // The current draw adapter has no calibrated per-quad bounds and always
+    // falls back to the original Cocos renderer.
+    (void)enabled;
+    g_gpuDrawBridgeEnabled.store(false, std::memory_order_release);
 }
 
 bool isGpuDrawBridgeEnabled() noexcept {
-    return g_gpuDrawBridgeEnabled.load(std::memory_order_acquire);
+    return false;
 }
 
 void detachCocosPassiveHooks(AtlasPassiveObserver* observer) noexcept {
