@@ -1,4 +1,5 @@
 #include "bismuth/gles31_culler.hpp"
+#include "bismuth/atlas_indices.hpp"
 #include <cmath>
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include <embedded_shaders.hpp>
@@ -112,7 +113,7 @@ void Gles31Culler::reset() noexcept {
     classifyProgram_ = offsetsProgram_ = scatterProgram_ = atlasIndicesProgram_ = 0;
     candidates_ = flags_ = localOffsets_ = groupSums_ = 0;
     groupOffsets_ = visibleIndices_ = indirectCommand_ = indexedCommand_ = atlasElementIndices_ = 0;
-    capacity_ = groupCapacity_ = uploadedCount_ = 0;
+    capacity_ = groupCapacity_ = uploadedCount_ = uploadedAtlasCapacity_ = 0;
 }
 
 bool Gles31Culler::initialize(std::string* error) {
@@ -195,27 +196,43 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
     return true;
 }
 
-bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, std::string* error) {
+bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, std::uint32_t atlasCapacity, std::string* error) {
     if (!classifyProgram_ || !candidates_ || !indirectCommand_ || !indexedCommand_ || !atlasElementIndices_) {
         if (error) *error = "Culler is not initialized";
         return false;
     }
     ScopedComputeState state;
+    if (atlasCapacity > kAtlasMaxQuads16) {
+        if (error) *error = "Atlas capacity exceeds the 16-bit GLES atlas limit";
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
+        return false;
+    }
+    for (const Candidate& candidate : candidates) {
+        if (!isValidAtlasSlot(candidate.payload, atlasCapacity)) {
+            if (error) *error = "Candidate payload is outside the current atlas slot range";
+            uploadedCount_ = uploadedAtlasCapacity_ = 0;
+            clearIndirectCommand(indirectCommand_);
+            clearIndexedCommand(indexedCommand_);
+            return false;
+        }
+    }
     if (candidates.size() > kMaxCandidates) {
         if (error) *error = "Candidate upload exceeds the 16384 candidate prototype limit";
-        uploadedCount_ = 0;
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);
         return false;
     }
     if (candidates.empty()) {
-        uploadedCount_ = 0;
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);
         return true;
     }
     if (!allocate(static_cast<std::uint32_t>(candidates.size()), error)) {
-        uploadedCount_ = 0;
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);
         return false;
@@ -231,6 +248,7 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
         return false;
     }
     uploadedCount_ = static_cast<std::uint32_t>(candidates.size());
+    uploadedAtlasCapacity_ = atlasCapacity;
     return true;
 }
 
@@ -255,7 +273,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     if (count == 0) {
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);
-        uploadedCount_ = 0;
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
         return true;
     }
     if (!classifyProgram_ || count > capacity_ || count != uploadedCount_) {
