@@ -23,7 +23,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
     return JNI_VERSION_1_6;
 }
 extern "C" const char* bismuth_android_build_id() {
-    return "Bismuth-Android 0.3.0-c-api";
+    return "Bismuth-Android 0.4.0-c-api";
 }
 extern "C" std::uint32_t bismuth_android_capabilities() {
     return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE;
