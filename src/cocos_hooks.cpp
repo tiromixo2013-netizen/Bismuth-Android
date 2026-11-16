@@ -37,7 +37,6 @@ constexpr char kRemoveQuadsAtIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas18remov
 constexpr char kMoveQuadsThreeSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjjj";
 constexpr char kMoveQuadsTwoSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjj";
 constexpr char kIncreaseTotalQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas22increaseTotalQuadsWithEj";
-constexpr char kGlDrawElementsSymbol[] = "glDrawElements";
 
 using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
@@ -50,7 +49,6 @@ using TwoIndexFn = void (*)(void*, unsigned int, unsigned int);
 using OneIndexFn = void (*)(void*, unsigned int);
 using ThreeIndexFn = void (*)(void*, unsigned int, unsigned int, unsigned int);
 using IncreaseQuadsFn = void (*)(void*, unsigned int);
-using GlDrawElementsFn = void (*)(GLenum, GLsizei, GLenum, const void*);
 
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
@@ -65,12 +63,7 @@ TwoIndexFn g_originalRemoveQuadsAtIndex = nullptr;
 ThreeIndexFn g_originalMoveQuadsThree = nullptr;
 TwoIndexFn g_originalMoveQuadsTwo = nullptr;
 IncreaseQuadsFn g_originalIncreaseTotalQuads = nullptr;
-GlDrawElementsFn g_originalGlDrawElements = nullptr;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
-thread_local void* g_activeAtlasDraw = nullptr;
-thread_local unsigned int g_activeAtlasCount = 0;
-thread_local unsigned int g_activeAtlasStart = 0;
-thread_local bool g_insideAtlasDraw = false;
 std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
@@ -190,17 +183,6 @@ bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) 
     return false;
 }
 
-void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices) {
-    if (g_insideAtlasDraw && g_activeAtlasDraw && mode == GL_TRIANGLES &&
-        type == GL_UNSIGNED_SHORT && count >= 0 &&
-        static_cast<unsigned int>(count) == g_activeAtlasCount * 6u &&
-        reinterpret_cast<std::uintptr_t>(indices) ==
-            static_cast<std::uintptr_t>(g_activeAtlasStart) * 12u &&
-        tryGpuIndexedDraw(g_activeAtlasDraw, g_activeAtlasCount, g_activeAtlasStart))
-        return;
-    if (g_originalGlDrawElements) g_originalGlDrawElements(mode, count, type, indices);
-}
-
 void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start) {
     if (g_originalDrawNumberOfQuads)
         g_originalDrawNumberOfQuads(self, count, start);
@@ -314,7 +296,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* moveQuadsThree = dlsym(RTLD_DEFAULT, kMoveQuadsThreeSymbol);
     void* moveQuadsTwo = dlsym(RTLD_DEFAULT, kMoveQuadsTwoSymbol);
     void* increaseTotalQuads = dlsym(RTLD_DEFAULT, kIncreaseTotalQuadsSymbol);
-    void* glDrawElements = dlsym(RTLD_DEFAULT, kGlDrawElementsSymbol);
     if (!symbolBelongsToTarget(batchDraw, module.path) ||
         !symbolBelongsToTarget(updateQuad, module.path) ||
         !symbolBelongsToTarget(drawNumberOfQuads, module.path) ||
@@ -327,20 +308,9 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         !symbolBelongsToTarget(removeQuadsAtIndex, module.path) ||
         !symbolBelongsToTarget(moveQuadsThree, module.path) ||
         !symbolBelongsToTarget(moveQuadsTwo, module.path) ||
-        !symbolBelongsToTarget(increaseTotalQuads, module.path) ||
-        !glDrawElements) {
+        !symbolBelongsToTarget(increaseTotalQuads, module.path)) {
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
-    }
-
-    if (!g_originalGlDrawElements) {
-        if (DobbyHook(glDrawElements, reinterpret_cast<void*>(hookedGlDrawElements),
-                      reinterpret_cast<void**>(&g_originalGlDrawElements)) != 0 ||
-            !g_originalGlDrawElements) {
-            g_originalGlDrawElements = nullptr;
-            if (error) *error = "Dobby failed to install the GLES glDrawElements bridge";
-            return false;
-        }
     }
 
     if (!g_updateQuadHooked) {
