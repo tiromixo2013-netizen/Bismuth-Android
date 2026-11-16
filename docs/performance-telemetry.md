@@ -195,3 +195,14 @@ invalidation record.
 These changes remove avoidable CPU-side measurement work in detached-observer
 and empty-draw cases. They do not bypass Cocos rendering, alter draw ordering,
 or claim a measurable FPS gain without device A/B testing.
+
+
+## Null-observer acquisition fast path
+
+Observer callback acquisition first performs an acquire-load of the observer
+pointer. When no observer is attached, it returns immediately without changing
+the active-callback counter. If a pointer is present, it increments the active
+counter and rechecks the pointer before returning it; a concurrent detach that
+wins the race causes the acquisition to back out without exposing the pointer.
+This preserves the detach lifetime protocol while removing an atomic
+read-modify-write pair from the common no-observer path.
