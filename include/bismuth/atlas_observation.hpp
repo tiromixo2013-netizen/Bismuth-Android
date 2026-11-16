@@ -64,6 +64,7 @@ public:
     }
     void recordSpriteTransform(bool knownBaseImplementation) noexcept {
         counters_.recordSpriteTransform(knownBaseImplementation);
+        if (!knownBaseImplementation) revisions_.recordQuadWrite();
     }
     void recordQuadWrite(bool originalCallSucceeded) noexcept {
         if (!originalCallSucceeded) return;
@@ -76,7 +77,9 @@ public:
         counters_.recordStructuralMutation();
     }
     void recordDirtyUpload(bool originalUploadSucceeded, std::uint32_t quadCount) noexcept {
-        if (originalUploadSucceeded) counters_.recordDirtyUpload(quadCount);
+        if (!originalUploadSucceeded) return;
+        revisions_.recordQuadWrite();
+        counters_.recordDirtyUpload(quadCount);
     }
     void invalidateUnknownMutation() noexcept {
         revisions_.recordStructuralMutation();
