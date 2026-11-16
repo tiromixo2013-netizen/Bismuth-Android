@@ -34,10 +34,18 @@ GNU Build ID and verifies both resolved symbols belong to
 - `CCTextureAtlas::increaseTotalQuadsWith`: forwards the original
   void-returning operation, then invalidates the slot map because the live
   quad count changes.
+- `CCTextureAtlas::drawNumberOfQuads(count, start)`: observes the dirty byte
+  before forwarding the original draw. If a non-empty draw enters with dirty
+  data, it conservatively invalidates cached quad data after the original
+  call. The engine issues `glBufferSubData` and clears its dirty byte, but GL
+  success is not observable without consuming the game's GL error state, so
+  this hook does not claim or count a confirmed successful upload.
 
 The batch child count is intentionally reported as zero until its runtime
-object layout is independently validated. Dirty VBO uploads are not hooked yet.
-Do not use these counters as proof that GPU culling is safe to enable.
+object layout is independently validated. The dirty-draw observer only invalidates cached quad data on an upload
+attempt; it deliberately does not count the operation as a confirmed
+successful GL upload. Do not use these counters as proof that GPU culling is
+safe to enable.
 
 ## API contract
 
@@ -64,7 +72,7 @@ while game threads may be running.
 ## Remaining validation
 
 - Build/CI must pass with the pinned Dobby dependency.
-- Add a conservative observer for dirty VBO uploads.
+- Confirm dirty VBO upload behavior and callback execution on-device.
 - Install in the actual game process and verify the expected build-ID check.
 - Confirm callbacks execute on the render thread and that counters increase.
 - The insert/remove/move/count mutation signatures were checked against the
