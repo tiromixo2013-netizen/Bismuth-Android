@@ -96,9 +96,10 @@ on the same render thread before using this class.
 `include/bismuth/atlas_observation.hpp` also provides `AtlasPassiveObserver`,
 a render-thread-owned facade that combines the revision tracker with telemetry.
 Mutation callbacks accept an explicit success flag: failed original operations
-do not advance revisions. An unclassified or ambiguous mutation calls
-`invalidateUnknownMutation()`, which conservatively advances the structural
-revision and invalidates cached slot maps. This remains a host-side contract;
+do not advance revisions. Unknown transform overrides and successful dirty
+uploads conservatively advance the content revision. An unclassified or
+ambiguous mutation calls `invalidateUnknownMutation()`, which advances the
+structural revision and invalidates cached slot maps. This remains a host-side contract;
 it does not install hooks or infer that an engine operation succeeded.
 
 These counters are not connected to the game. They define what to measure
