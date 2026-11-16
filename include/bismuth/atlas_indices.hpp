@@ -19,6 +19,10 @@ struct IndexedDrawCommand {
 static_assert(sizeof(IndexedDrawCommand) == 20,
               "GLES indexed indirect command must contain five 32-bit words");
 
+inline bool isValidAtlasSlot(std::uint32_t slot, std::uint32_t atlasCapacity) noexcept {
+    return atlasCapacity <= kAtlasMaxQuads16 && slot < atlasCapacity;
+}
+
 // Build the exact target EBO pattern for a stable, painter-ordered list of
 // atlas slots. This is a CPU reference/validation helper, not the live GPU path.
 inline bool buildAtlasElementIndices16(
@@ -31,7 +35,7 @@ inline bool buildAtlasElementIndices16(
 
     out.reserve(visibleSlots.size() * 6u);
     for (const std::uint32_t slot : visibleSlots) {
-        if (slot >= atlasCapacity) {
+        if (!isValidAtlasSlot(slot, atlasCapacity)) {
             out.clear();
             return false;
         }
