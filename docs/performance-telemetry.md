@@ -90,3 +90,53 @@ GPU completion, or guaranteed compositor timing. The hook is optional and
 non-fatal: if the EGL symbol cannot be resolved from `libEGL.so` or Dobby
 cannot install it, the original rendering path and Cocos observer hooks remain
 available, but frame-cadence samples remain empty.
+
+
+# Performance optimization batch: hot-path and capacity work
+
+This batch is deliberately separate from Frame Generation, upscaling, and CAS.
+It improves the existing standalone GLES compute prototype and C API plumbing;
+it does not replace the Geometry Dash renderer or enable the GPU draw bridge.
+
+## Changes
+
+- **Uniform lookup moved out of dispatch:** all five compute-shader uniform
+  locations are resolved once after program link and validated during
+  initialization. The per-dispatch path now uses cached integer locations
+  instead of repeatedly calling `glGetUniformLocation`.
+- **Geometric SSBO capacity growth:** candidate and intermediate buffers grow
+  in whole 128-thread workgroups using a doubling policy, capped at the existing
+  128-workgroup / 16,384-candidate prototype limit. This reduces repeated
+  buffer reallocation when candidate counts increase gradually. Capacity does
+  not shrink automatically.
+- **Reusable C API staging storage:** each `BismuthInstance` retains its
+  candidate conversion vector. After the first sufficiently large upload,
+  later uploads within that capacity reuse the same allocation rather than
+  constructing and destroying a temporary vector each call. Allocation failure
+  returns the existing error code instead of allowing an exception across the
+  C ABI.
+- **Host tests:** the pure capacity-growth policy is tested at initial, doubling,
+  stable-capacity, maximum-capacity, and invalid-boundary cases.
+
+## Safety invariants retained
+
+- GLES calls still require the owning context to be current on the calling
+  thread.
+- Existing compute state save/restore remains intact, including SSBO range
+  bindings.
+- Existing fail-closed command clearing and atlas-slot validation remain.
+- No `glFinish()`, synchronous readback, sticky `glGetError()` polling, or
+  frame-boundary guess is introduced.
+- The original Cocos draw path and sprite transform loop are untouched.
+- The experimental GPU draw bridge remains disabled by default.
+
+## Validation and limits
+
+Host CMake/CTest covers the new capacity policy. Android ARM64 CI compiles the
+actual GLES code path, including cached uniform fields and reuse of the staging
+vector. These checks do not measure runtime FPS or GPU execution on a physical
+phone. The next performance decision still requires A/B captures on the target
+Galaxy M14 and Skeletal Shenanigans, with the same scene and thermal conditions.
+
+The current telemetry remains CPU-side observation and EGL buffer-submission
+cadence; it is not a GPU timer or display-presentation measurement.
