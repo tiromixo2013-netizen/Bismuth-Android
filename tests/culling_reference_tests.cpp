@@ -115,5 +115,19 @@ int main() {
     observation.beginFrame();
     const AtlasObservationSnapshot cleared = observation.snapshot();
     assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u);
+    AtlasPassiveObserver passive;
+    const AtlasRevision passiveStart = passive.revision();
+    passive.recordQuadWrite(false); // failed original operation: no invalidation
+    assert(passive.quadDataCurrent(passiveStart));
+    passive.recordQuadWrite(true);
+    assert(passive.slotMappingCurrent(passiveStart));
+    assert(!passive.quadDataCurrent(passiveStart));
+    const AtlasRevision beforeUnknown = passive.revision();
+    passive.invalidateUnknownMutation();
+    assert(!passive.slotMappingCurrent(beforeUnknown));
+    passive.recordStructuralMutation(false);
+    const AtlasObservationSnapshot passiveStats = passive.snapshot();
+    assert(passiveStats.quadWrites == 1u);
+    assert(passiveStats.structuralMutations == 1u);
     std::cout << "Bismuth-Android reference tests passed\n";
 }
