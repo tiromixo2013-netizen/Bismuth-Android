@@ -102,7 +102,7 @@ BISMUTH_API int bismuth_is_gpu_draw_bridge_enabled(void);
  * This does not unpatch hooks; the original game functions always remain active. */
 BISMUTH_API void bismuth_set_passive_telemetry_enabled(int enabled);
 BISMUTH_API int bismuth_is_passive_telemetry_enabled(void);
-/* GPU timer queries are opt-in; enabling is safe only from the render thread. */
+/* GPU timer queries are opt-in. This toggle is thread-safe; GL query work is deferred to the render thread. */
 BISMUTH_API void bismuth_set_gpu_timing_enabled(int enabled);
 BISMUTH_API int bismuth_is_gpu_timing_enabled(void);
 BISMUTH_API int bismuth_is_gpu_timing_supported(void);
