@@ -14,6 +14,8 @@ namespace {
 struct BismuthInstance {
     bismuth::Gles31Culler culler;
     bismuth::AtlasPassiveObserver observer;
+    // Reused staging storage: avoids a fresh heap allocation on every upload.
+    std::vector<bismuth::Candidate> candidateScratch;
 };
 BismuthInstance* g_autoHookInstance = nullptr;
 int g_autoHookStatus = 0;
@@ -64,7 +66,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
     return JNI_VERSION_1_6;
 }
 extern "C" const char* bismuth_android_build_id() {
-    return "Bismuth-Android 0.6.0-gpu-draw-bridge";
+    return "Bismuth-Android 0.7.0-performance-foundation";
 }
 extern "C" std::uint32_t bismuth_android_capabilities() {
     return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
@@ -89,14 +91,20 @@ extern "C" int bismuth_is_initialized(void* handle) {
 extern "C" int bismuth_upload(void* handle, const BismuthCandidate* candidates,
                                std::uint32_t count, std::uint32_t atlasCapacity) {
     if (!handle || (count && !candidates)) return -1;
-    // Reject oversized input before allocating/copying user-provided records.
+    // Reject oversized input before resizing or copying user-provided records.
     if (count > BISMUTH_MAX_CANDIDATES) return -2;
-    std::vector<bismuth::Candidate> input;
-    if (count) {
-        input.resize(count);
-        std::memcpy(input.data(), candidates, static_cast<std::size_t>(count) * sizeof(BismuthCandidate));
+    auto* instance = static_cast<BismuthInstance*>(handle);
+    try {
+        instance->candidateScratch.resize(count);
+    } catch (const std::bad_alloc&) {
+        return -2;
     }
-    return static_cast<BismuthInstance*>(handle)->culler.uploadCandidates(input, atlasCapacity) ? 0 : -2;
+    if (count) {
+        std::memcpy(instance->candidateScratch.data(), candidates,
+                    static_cast<std::size_t>(count) * sizeof(BismuthCandidate));
+    }
+    // vector::resize reuses its capacity after the first sufficiently large upload.
+    return instance->culler.uploadCandidates(instance->candidateScratch, atlasCapacity) ? 0 : -2;
 }
 extern "C" int bismuth_dispatch(void* handle, float left, float bottom, float right,
                                  float top, std::uint32_t count) {
