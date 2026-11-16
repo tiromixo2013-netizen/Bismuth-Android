@@ -345,3 +345,50 @@ For the normal `CCSpriteBatchNode` path, the draw range is therefore the contigu
 ### Updated adapter implication
 
 The CCSpriteBatchNode path draws the atlas's entire contiguous quad prefix in atlas order. A GPU visibility adapter would need to preserve that order while selecting quads; it cannot simply shorten the draw count because invisible quads may be interspersed with visible ones. A separate generated element-index stream remains a plausible experiment, but only after proving the quad-to-vertex/index pattern and how atlas reordering/insert/remove operations update slots. ParticleBatchNode and CCAtlasNode need separate compatibility decisions and should initially remain on the original path.
+
+
+### Exact atlas EBO construction and quad index pattern
+
+The uploaded target's `CCTextureAtlas::initWithTexture(texture, capacity)`
+(`0x00b33004`) allocates and zero-initializes the CPU-side quad array at
+`this + 0x60` and the index array at `this + 0x38`. The allocation sizes
+are respectively `capacity * 96` bytes and `capacity * 12` bytes.
+Initialization then calls `setupIndices()` followed by `setupVBO()`.
+
+The target's `CCTextureAtlas::setupIndices()` (`0x00b32ee0`) writes six
+16-bit indices for each quad. The loop's values for quad `i` are:
+
+```text
+[4*i + 0, 4*i + 1, 4*i + 2, 4*i + 3, 4*i + 2, 4*i + 1]
+```
+
+This exact pattern is established by the six `strh` stores in the loop; it is
+not an assumption based on a public Cocos2d implementation. Each quad therefore
+uses four consecutive vertices and two triangles with the index order
+(0,1,2) and (3,2,1), relative to that quad's first vertex. The EBO is allocated
+with `capacity * 12` bytes and uploaded using `GL_ELEMENT_ARRAY_BUFFER`
+with `GL_STATIC_DRAW` (`0x88e4`). The VBO is allocated with
+`capacity * 96` bytes and `GL_DYNAMIC_DRAW` (`0x88e8`).
+
+The index-generation loop advances the base vertex by four and narrows the
+values to 16 bits. Consequently, this representation can address at most
+16,384 quads (65,536 vertices, indices 0 through 65,535) without 16-bit
+index wraparound. This is a format limit of this exact EBO scheme, not a
+validated maximum capacity for every game atlas; callers and capacity growth
+must be inspected before assuming all runtime atlases stay within it.
+
+### What this enables, and what it does not
+
+The static per-quad index pattern means a visibility experiment does not need
+to regenerate the game's original EBO when the atlas slots remain unchanged.
+A separate compacted EBO could instead emit the six original indices for each
+visible quad in original atlas order. That would preserve painter order if
+(and only if) the candidate-to-atlas-slot mapping is correct and the compacted
+index buffer is drawn with the same VBO, texture, vertex attributes, blend
+state, shader, and clipping/stencil state.
+
+This still does not remove the CPU child loop or its `updateTransform()`
+virtual calls. It also does not establish that quad slots remain stable during
+child sorting, insertion/removal, atlas capacity growth, or animation. The
+first practical prototype should remain observation-only and should measure
+these lifecycle events before attempting a compacted EBO or changing a draw.
