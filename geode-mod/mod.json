@@ -1,0 +1,32 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "android": "2.2081"
+  },
+  "id": "bismuth.android",
+  "name": "Bismuth Android",
+  "version": "0.9.0",
+  "developer": "Bismuth Project",
+  "description": "Android ARM64 rendering diagnostics and experimental GPU research for Geometry Dash 2.2081.",
+  "tags": ["performance", "utility"],
+  "settings": {
+    "diagnostics": {
+      "type": "bool",
+      "name": "Diagnostic logging",
+      "description": "Write Bismuth initialization and capability information to the Geode log.",
+      "default": true
+    },
+    "passive-telemetry": {
+      "type": "bool",
+      "name": "Passive renderer telemetry",
+      "description": "Collect CPU-side renderer counters. Disable for a lower-overhead comparison.",
+      "default": true
+    },
+    "gpu-timing": {
+      "type": "bool",
+      "name": "Asynchronous GPU timing",
+      "description": "Use non-blocking timer queries when the device exposes GL_EXT_disjoint_timer_query.",
+      "default": false
+    }
+  }
+}
