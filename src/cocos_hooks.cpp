@@ -31,6 +31,8 @@ std::atomic<AtlasPassiveObserver*> g_observer{nullptr};
 std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
 bool g_hooksInstalled = false;
+bool g_updateQuadHooked = false;
+bool g_batchDrawHooked = false;
 
 const char* basenameOf(const char* path) {
     if (!path) return "";
@@ -158,22 +160,32 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         return false;
     }
 
-    if (DobbyHook(updateQuad, reinterpret_cast<void*>(hookedUpdateQuad),
-                  reinterpret_cast<void**>(&g_originalUpdateQuad)) != 0 ||
-        !g_originalUpdateQuad) {
-        g_originalUpdateQuad = nullptr;
-        if (error) *error = "Dobby failed to install the CCTextureAtlas::updateQuad observer";
-        return false;
+    if (!g_updateQuadHooked) {
+        if (DobbyHook(updateQuad, reinterpret_cast<void*>(hookedUpdateQuad),
+                      reinterpret_cast<void**>(&g_originalUpdateQuad)) != 0 ||
+            !g_originalUpdateQuad) {
+            g_originalUpdateQuad = nullptr;
+            if (error) *error = "Dobby failed to install the CCTextureAtlas::updateQuad observer";
+            return false;
+        }
+        g_updateQuadHooked = true;
     }
 
-    if (DobbyHook(batchDraw, reinterpret_cast<void*>(hookedBatchDraw),
-                  reinterpret_cast<void**>(&g_originalBatchDraw)) != 0 ||
-        !g_originalBatchDraw) {
-        DobbyDestroy(updateQuad);
-        g_originalUpdateQuad = nullptr;
-        g_originalBatchDraw = nullptr;
-        if (error) *error = "Dobby failed to install the CCSpriteBatchNode::draw observer";
-        return false;
+    if (!g_batchDrawHooked) {
+        if (DobbyHook(batchDraw, reinterpret_cast<void*>(hookedBatchDraw),
+                      reinterpret_cast<void**>(&g_originalBatchDraw)) != 0 ||
+            !g_originalBatchDraw) {
+            g_originalBatchDraw = nullptr;
+            // If rollback fails, keep the updateQuad trampoline intact. Its
+            // observer is still null until both hooks are installed.
+            if (DobbyDestroy(updateQuad) == 0) {
+                g_updateQuadHooked = false;
+                g_originalUpdateQuad = nullptr;
+            }
+            if (error) *error = "Dobby failed to install the CCSpriteBatchNode::draw observer";
+            return false;
+        }
+        g_batchDrawHooked = true;
     }
 
     g_observer.store(observer, std::memory_order_release);
