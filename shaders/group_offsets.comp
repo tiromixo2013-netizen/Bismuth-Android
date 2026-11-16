@@ -4,7 +4,7 @@ layout(local_size_x = 128) in;
 layout(std430, binding = 0) readonly buffer GroupSums { uint groupSums[]; };
 layout(std430, binding = 1) writeonly buffer GroupOffsets { uint groupOffsets[]; };
 layout(std430, binding = 2) buffer IndirectCommand { uint vertexCount; uint instanceCount; uint firstVertex; uint baseInstance; };
-layout(std430, binding = 3) buffer IndexedCommand { uint indexCount; uint indexedInstanceCount; uint firstIndex; int baseVertex; uint indexedBaseInstance; };
+layout(std430, binding = 3) buffer IndexedCommand { uint indexCount; uint indexedInstanceCount; uint firstIndex; int baseVertex; uint indexedReservedMustBeZero; };
 uniform uint uGroupCount;
 shared uint scan[128];
 void main() {
@@ -26,6 +26,6 @@ void main() {
     }
     if (lane == 0u) {
         vertexCount = 6u; firstVertex = 0u; baseInstance = 0u;
-        firstIndex = 0u; baseVertex = 0; indexedBaseInstance = 0u;
+        firstIndex = 0u; baseVertex = 0; indexedReservedMustBeZero = 0u;
     }
 }
