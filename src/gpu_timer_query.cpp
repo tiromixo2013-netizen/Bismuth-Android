@@ -1,10 +1,6 @@
 #include "bismuth/gpu_timer_query.hpp"
 
 #if defined(__ANDROID__)
-#include <GLES3/gl31.h>
-#endif
-
-#if defined(__ANDROID__)
 #include <EGL/egl.h>
 #include <algorithm>
 #include <cstring>
@@ -12,11 +8,11 @@
 
 namespace bismuth {
 namespace {
-constexpr GLenum kTimeElapsedExt = 0x88BF;
-constexpr GLenum kQueryResultExt = 0x8866;
-constexpr GLenum kCurrentQueryExt = 0x8865;
-constexpr GLenum kQueryResultAvailableExt = 0x8867;
-constexpr GLenum kGpuDisjointExt = 0x8FBB;
+constexpr std::uint32_t kTimeElapsedExt = 0x88BF;
+constexpr std::uint32_t kQueryResultExt = 0x8866;
+constexpr std::uint32_t kCurrentQueryExt = 0x8865;
+constexpr std::uint32_t kQueryResultAvailableExt = 0x8867;
+constexpr std::uint32_t kGpuDisjointExt = 0x8FBB;
 
 bool hasExtension(const char* list, const char* wanted) noexcept {
     if (!list || !wanted || !*wanted) return false;
@@ -53,13 +49,13 @@ bool GlesGpuTimerQuery::loadFunctions() noexcept {
 bool GlesGpuTimerQuery::initialize() noexcept {
     if (initialized_) return supported_.load(std::memory_order_acquire);
     initialized_ = true;
-    const char* extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+    const char* extensions = reinterpret_cast<const char*>(glGetString(0x1F03u /* GL_EXTENSIONS */));
     if (!hasExtension(extensions, "GL_EXT_disjoint_timer_query") || !loadFunctions())
         return false;
-    genQueries_(static_cast<GLsizei>(kQueryCount), queries_);
-    for (GLuint query : queries_) {
+    genQueries_(static_cast<std::int32_t>(kQueryCount), queries_);
+    for (std::uint32_t query : queries_) {
         if (!query) {
-            if (deleteQueries_) deleteQueries_(static_cast<GLsizei>(kQueryCount), queries_);
+            if (deleteQueries_) deleteQueries_(static_cast<std::int32_t>(kQueryCount), queries_);
             std::fill(std::begin(queries_), std::end(queries_), 0u);
             return false;
         }
@@ -70,7 +66,7 @@ bool GlesGpuTimerQuery::initialize() noexcept {
 
 bool GlesGpuTimerQuery::begin() noexcept {
     if (!initialize() || active_) return false;
-    GLint currentQuery = 0;
+    std::int32_t currentQuery = 0;
     getQueryiv_(kTimeElapsedExt, kCurrentQueryExt, &currentQuery);
     if (currentQuery != 0) {
         skippedSamples_.fetch_add(1, std::memory_order_relaxed);
@@ -122,7 +118,7 @@ void GlesGpuTimerQuery::recordSample(std::uint64_t ns) noexcept {
 
 void GlesGpuTimerQuery::poll() noexcept {
     if (!initialize()) return;
-    GLint disjoint = 0;
+    std::int32_t disjoint = 0;
     glGetIntegerv(kGpuDisjointExt, &disjoint);
     if (disjoint != 0) {
         for (std::uint32_t slot = 0; slot < kQueryCount; ++slot)
@@ -131,10 +127,10 @@ void GlesGpuTimerQuery::poll() noexcept {
     }
     for (std::uint32_t slot = 0; slot < kQueryCount; ++slot) {
         if (!pending_[slot]) continue;
-        GLuint available = 0;
+        std::uint32_t available = 0;
         getQueryObjectuiv_(queries_[slot], kQueryResultAvailableExt, &available);
         if (!available) continue; // Never wait for the GPU.
-        GLuint64 elapsed = 0;
+        std::uint64_t elapsed = 0;
         if (!discardPending_[slot]) {
             getQueryObjectui64v_(queries_[slot], kQueryResultExt, &elapsed);
             if (elapsed != 0) recordSample(static_cast<std::uint64_t>(elapsed));
