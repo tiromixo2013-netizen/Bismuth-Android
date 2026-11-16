@@ -58,7 +58,6 @@ constexpr char kBatchDrawSymbol[] = "_ZN7cocos2d17CCSpriteBatchNode4drawEv";
 constexpr char kUpdateQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10updateQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
 constexpr char kDrawNumberOfQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas17drawNumberOfQuadsEjj";
 constexpr char kRemoveAllQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas14removeAllQuadsEv";
-constexpr char kResizeCapacitySymbol[] = "_ZN7cocos2d14CCTextureAtlas14resizeCapacityEj";
 constexpr char kInsertQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10insertQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
 constexpr char kInsertQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas11insertQuadsEPNS_19_ccV3F_C4B_T2F_QuadEjj";
 constexpr char kInsertQuadFromIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas19insertQuadFromIndexEjj";
@@ -74,7 +73,6 @@ using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
 using DrawNumberOfQuadsFn = void (*)(void*, unsigned int, unsigned int);
 using RemoveAllQuadsFn = void (*)(void*);
-using ResizeCapacityFn = bool (*)(void*, unsigned int);
 using InsertQuadFn = void (*)(void*, void*, unsigned int);
 using InsertQuadsFn = void (*)(void*, void*, unsigned int, unsigned int);
 using TwoIndexFn = void (*)(void*, unsigned int, unsigned int);
@@ -88,7 +86,6 @@ BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
 DrawNumberOfQuadsFn g_originalDrawNumberOfQuads = nullptr;
 RemoveAllQuadsFn g_originalRemoveAllQuads = nullptr;
-ResizeCapacityFn g_originalResizeCapacity = nullptr;
 InsertQuadFn g_originalInsertQuad = nullptr;
 InsertQuadsFn g_originalInsertQuads = nullptr;
 TwoIndexFn g_originalInsertQuadFromIndex = nullptr;
@@ -138,7 +135,6 @@ bool g_updateQuadHooked = false;
 bool g_drawNumberOfQuadsHooked = false;
 bool g_batchDrawHooked = false;
 bool g_removeAllQuadsHooked = false;
-bool g_resizeCapacityHooked = false;
 bool g_insertQuadHooked = false;
 bool g_insertQuadsHooked = false;
 bool g_insertQuadFromIndexHooked = false;
@@ -468,24 +464,6 @@ bool ensureGpuDrawElementsHook() noexcept {
     return true;
 }
 
-bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
-    if (!g_passiveTelemetryGate.enabled())
-        return g_originalResizeCapacity
-            ? g_originalResizeCapacity(self, requestedCapacity) : false;
-    std::uint32_t oldCapacity = 0;
-    if (self) std::memcpy(&oldCapacity, static_cast<const std::uint8_t*>(self) + 0x50,
-                          sizeof(oldCapacity));
-    const bool result = g_originalResizeCapacity
-        ? g_originalResizeCapacity(self, requestedCapacity) : false;
-    // A failed allocation can partially tear down atlas storage. Invalidate
-    // whenever a different capacity was requested, even if result is false.
-    if (oldCapacity != requestedCapacity) {
-        AtlasPassiveObserver* observer = acquireObserver();
-        if (observer) observer->recordStructuralMutation(true);
-        releaseObserver(observer);
-    }
-    return result;
-}
 
 } // namespace
 
@@ -521,7 +499,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* updateQuad = dlsym(RTLD_DEFAULT, kUpdateQuadSymbol);
     void* drawNumberOfQuads = dlsym(RTLD_DEFAULT, kDrawNumberOfQuadsSymbol);
     void* removeAllQuads = dlsym(RTLD_DEFAULT, kRemoveAllQuadsSymbol);
-    void* resizeCapacity = dlsym(RTLD_DEFAULT, kResizeCapacitySymbol);
     void* insertQuad = dlsym(RTLD_DEFAULT, kInsertQuadSymbol);
     void* insertQuads = dlsym(RTLD_DEFAULT, kInsertQuadsSymbol);
     void* insertQuadFromIndex = dlsym(RTLD_DEFAULT, kInsertQuadFromIndexSymbol);
@@ -536,7 +513,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         !symbolBelongsToTarget(updateQuad, module.path) ||
         !symbolBelongsToTarget(drawNumberOfQuads, module.path) ||
         !symbolBelongsToTarget(removeAllQuads, module.path) ||
-        !symbolBelongsToTarget(resizeCapacity, module.path) ||
         !symbolBelongsToTarget(insertQuad, module.path) ||
         !symbolBelongsToTarget(insertQuads, module.path) ||
         !symbolBelongsToTarget(insertQuadFromIndex, module.path) ||
@@ -607,17 +583,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_removeAllQuadsHooked = true;
-    }
-
-    if (!g_resizeCapacityHooked) {
-        if (DobbyHook(resizeCapacity, reinterpret_cast<void*>(hookedResizeCapacity),
-                      reinterpret_cast<void**>(&g_originalResizeCapacity)) != 0 ||
-            !g_originalResizeCapacity) {
-            g_originalResizeCapacity = nullptr;
-            if (error) *error = "Dobby failed to install the CCTextureAtlas::resizeCapacity observer";
-            return false;
-        }
-        g_resizeCapacityHooked = true;
     }
 
     if (!g_insertQuadHooked) {
