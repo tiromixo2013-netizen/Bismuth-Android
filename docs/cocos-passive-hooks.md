@@ -24,11 +24,20 @@ GNU Build ID and verifies both resolved symbols belong to
   result and invalidates the slot mapping whenever a different capacity was
   requested. The target routine can partially tear down storage on allocation
   failure, so invalidation is conservative even when it returns false.
+- `CCTextureAtlas::insertQuad`, `insertQuads`, and `insertQuadFromIndex`:
+  forward the original void-returning operation, then invalidate the slot map.
+- `CCTextureAtlas::removeQuadAtIndex` and `removeQuadsAtIndex`: forward the
+  original void-returning operation, then invalidate the slot map.
+- Both verified overloads of `CCTextureAtlas::moveQuadsFromIndex` (two and
+  three unsigned-integer arguments after `this`): forward the original
+  operation, then invalidate the slot map.
+- `CCTextureAtlas::increaseTotalQuadsWith`: forwards the original
+  void-returning operation, then invalidates the slot map because the live
+  quad count changes.
 
 The batch child count is intentionally reported as zero until its runtime
-object layout is independently validated. Insert/remove/move operations other
-than remove-all, and dirty VBO uploads, are not hooked yet. Do not use these
-counters as proof that the slot map is stable or that GPU culling is safe to enable.
+object layout is independently validated. Dirty VBO uploads are not hooked yet.
+Do not use these counters as proof that GPU culling is safe to enable.
 
 ## API contract
 
@@ -44,7 +53,7 @@ after `System.loadLibrary("cocos2dcpp")`. Query `bismuth_auto_hook_status()`
 and `bismuth_auto_hook_error()` to see whether exact-binary validation and
 installation succeeded. A version mismatch is non-fatal to game startup.
 
-The two hooks are pass-through observers only. They do not skip transforms,
+All installed hooks are pass-through observers only. They do not skip transforms,
 change GL state, replace draw calls, alter blend state, or submit Bismuth's
 generated EBO. The original engine functions remain in the call chain.
 
@@ -55,11 +64,11 @@ while game threads may be running.
 ## Remaining validation
 
 - Build/CI must pass with the pinned Dobby dependency.
-- Add and validate hooks for insert/remove/move operations and dirty VBO uploads.
+- Add a conservative observer for dirty VBO uploads.
 - Install in the actual game process and verify the expected build-ID check.
 - Confirm callbacks execute on the render thread and that counters increase.
-- Add structural mutation hooks only after every signature and success
-  convention is validated against the binary.
+- The insert/remove/move/count mutation signatures were checked against the
+  target ARM64 disassembly; runtime callback execution still requires testing.
 - Calibrate sprite bounds against the actual camera/view coordinate space.
 - Preserve the original draw path until alpha, clipping, blend, painter order,
   and device performance are validated.
