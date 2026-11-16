@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "bismuth/atlas_lifecycle.hpp"
 
 namespace bismuth {
 
@@ -48,6 +49,50 @@ public:
 
 private:
     AtlasObservationSnapshot current_{};
+};
+
+/*
+ * Passive hook event facade. Call mutation methods only after the original
+ * engine operation has completed successfully. Unknown mutations invalidate
+ * slot mappings conservatively. This class does not install hooks.
+ */
+class AtlasPassiveObserver {
+public:
+    void beginFrame() noexcept { counters_.beginFrame(); }
+    void recordBatchDraw(std::uint32_t childCount) noexcept {
+        counters_.recordBatchDraw(childCount);
+    }
+    void recordSpriteTransform(bool knownBaseImplementation) noexcept {
+        counters_.recordSpriteTransform(knownBaseImplementation);
+    }
+    void recordQuadWrite(bool originalCallSucceeded) noexcept {
+        if (!originalCallSucceeded) return;
+        revisions_.recordQuadWrite();
+        counters_.recordQuadWrite();
+    }
+    void recordStructuralMutation(bool originalCallSucceeded) noexcept {
+        if (!originalCallSucceeded) return;
+        revisions_.recordStructuralMutation();
+        counters_.recordStructuralMutation();
+    }
+    void recordDirtyUpload(bool originalUploadSucceeded, std::uint32_t quadCount) noexcept {
+        if (originalUploadSucceeded) counters_.recordDirtyUpload(quadCount);
+    }
+    void invalidateUnknownMutation() noexcept {
+        revisions_.recordStructuralMutation();
+        counters_.recordStructuralMutation();
+    }
+    AtlasObservationSnapshot snapshot() const noexcept { return counters_.snapshot(); }
+    AtlasRevision revision() const noexcept { return revisions_.snapshot(); }
+    bool slotMappingCurrent(AtlasRevision saved) const noexcept {
+        return revisions_.slotMappingCurrent(saved);
+    }
+    bool quadDataCurrent(AtlasRevision saved) const noexcept {
+        return revisions_.quadDataCurrent(saved);
+    }
+private:
+    AtlasRevisionTracker revisions_{};
+    AtlasObservationCounters counters_{};
 };
 
 } // namespace bismuth
