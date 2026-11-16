@@ -1,6 +1,7 @@
 #include "bismuth/cocos_hooks.hpp"
 #include "bismuth/target_layout.hpp"
 #include "bismuth/telemetry_gate.hpp"
+#include "bismuth/observer_callback_guard.hpp"
 
 #if defined(__ANDROID__) && defined(BISMUTH_ENABLE_COCOS_HOOKS)
 
@@ -204,8 +205,8 @@ AtlasPassiveObserver* acquireObserver() noexcept {
     return observer;
 }
 
-void releaseObserver() noexcept {
-    g_activeCallbacks.fetch_sub(1, std::memory_order_release);
+void releaseObserver(AtlasPassiveObserver* observer) noexcept {
+    releaseObserverCallback(g_activeCallbacks, observer);
 }
 
 EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
@@ -221,7 +222,7 @@ EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
         if (monotonicNs > 0)
             observer->recordFrameStart(static_cast<std::uint64_t>(monotonicNs));
     }
-    releaseObserver();
+    releaseObserver(observer);
     return g_originalEglSwapBuffers
         ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
 }
@@ -235,7 +236,7 @@ void hookedBatchDraw(void* self) {
     AtlasPassiveObserver* observer = acquireObserver();
     if (!observer) {
         if (g_originalBatchDraw) g_originalBatchDraw(self);
-        releaseObserver();
+        releaseObserver(observer);
         return;
     }
 
@@ -250,7 +251,7 @@ void hookedBatchDraw(void* self) {
         std::chrono::steady_clock::now() - start).count();
     observer->recordBatchDraw(
         childCount, elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0u);
-    releaseObserver();
+    releaseObserver(observer);
 }
 
 void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
@@ -258,7 +259,7 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
     if (!g_passiveTelemetryGate.enabled()) return;
     AtlasPassiveObserver* observer = acquireObserver();
     if (observer) observer->recordQuadWrite(true);
-    releaseObserver();
+    releaseObserver(observer);
 }
 
 bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
@@ -347,7 +348,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
         if (dirtyBefore != 0 && count != 0) {
             AtlasPassiveObserver* observer = acquireObserver();
             if (observer) observer->invalidateQuadData();
-            releaseObserver();
+            releaseObserver(observer);
         }
         return;
     }
@@ -373,7 +374,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     if (dirtyBefore != 0 && count != 0) {
         AtlasPassiveObserver* observer = acquireObserver();
         if (observer) observer->invalidateQuadData();
-        releaseObserver();
+        releaseObserver(observer);
     }
 }
 
@@ -382,14 +383,14 @@ void hookedRemoveAllQuads(void* self) {
     if (!g_passiveTelemetryGate.enabled()) return;
     AtlasPassiveObserver* observer = acquireObserver();
     if (observer) observer->recordStructuralMutation(true);
-    releaseObserver();
+    releaseObserver(observer);
 }
 
 void recordStructuralMutation() {
     if (!g_passiveTelemetryGate.enabled()) return;
     AtlasPassiveObserver* observer = acquireObserver();
     if (observer) observer->recordStructuralMutation(true);
-    releaseObserver();
+    releaseObserver(observer);
 }
 
 void hookedInsertQuad(void* self, void* quad, unsigned int index) {
@@ -457,7 +458,7 @@ bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
     if (oldCapacity != requestedCapacity) {
         AtlasPassiveObserver* observer = acquireObserver();
         if (observer) observer->recordStructuralMutation(true);
-        releaseObserver();
+        releaseObserver(observer);
     }
     return result;
 }

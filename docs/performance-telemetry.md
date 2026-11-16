@@ -206,3 +206,8 @@ counter and rechecks the pointer before returning it; a concurrent detach that
 wins the race causes the acquisition to back out without exposing the pointer.
 This preserves the detach lifetime protocol while removing an atomic
 read-modify-write pair from the common no-observer path.
+
+
+## Paired observer release guard
+
+The callback release helper now accepts the acquired observer pointer and only decrements the active-callback count when acquisition returned a non-null observer. This keeps the null-observer fast path balanced: a failed acquisition performs neither increment nor decrement, while a successful acquisition performs exactly one of each.
