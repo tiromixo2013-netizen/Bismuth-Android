@@ -1,6 +1,10 @@
 #include "bismuth/gpu_timer_query.hpp"
 
 #if defined(__ANDROID__)
+#include <GLES3/gl31.h>
+#endif
+
+#if defined(__ANDROID__)
 #include <EGL/egl.h>
 #include <algorithm>
 #include <cstring>
