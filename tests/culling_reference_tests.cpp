@@ -5,7 +5,9 @@
 #include "bismuth/capacity_growth.hpp"
 #include "bismuth/target_layout.hpp"
 #include "bismuth/telemetry_gate.hpp"
+#include "bismuth/observer_callback_guard.hpp"
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -13,6 +15,15 @@
 #include <vector>
 using namespace bismuth;
 int main() {
+    // A null observer acquisition must never underflow the active callback
+    // count; a successful acquisition must release exactly one reference.
+    std::atomic<std::uint32_t> activeObserverCallbacks{0u};
+    releaseObserverCallback(activeObserverCallbacks, nullptr);
+    assert(activeObserverCallbacks.load(std::memory_order_relaxed) == 0u);
+    activeObserverCallbacks.fetch_add(1u, std::memory_order_relaxed);
+    releaseObserverCallback(activeObserverCallbacks, reinterpret_cast<void*>(1));
+    assert(activeObserverCallbacks.load(std::memory_order_relaxed) == 0u);
+
     // Passive telemetry can be toggled without touching the original draw path.
     TelemetryGate telemetryGate;
     assert(telemetryGate.enabled());
