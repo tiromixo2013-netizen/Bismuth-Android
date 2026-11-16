@@ -122,9 +122,18 @@ int main() {
     passive.recordQuadWrite(true);
     assert(passive.slotMappingCurrent(passiveStart));
     assert(!passive.quadDataCurrent(passiveStart));
+    const AtlasRevision beforeUnknownTransform = passive.revision();
+    passive.recordSpriteTransform(false);
+    assert(passive.slotMappingCurrent(beforeUnknownTransform));
+    assert(!passive.quadDataCurrent(beforeUnknownTransform));
     const AtlasRevision beforeUnknown = passive.revision();
     passive.invalidateUnknownMutation();
     assert(!passive.slotMappingCurrent(beforeUnknown));
+    const AtlasRevision beforeDirtyUpload = passive.revision();
+    passive.recordDirtyUpload(false, 10u);
+    assert(passive.quadDataCurrent(beforeDirtyUpload));
+    passive.recordDirtyUpload(true, 10u);
+    assert(!passive.quadDataCurrent(beforeDirtyUpload));
     passive.recordStructuralMutation(false);
     const AtlasObservationSnapshot passiveStats = passive.snapshot();
     assert(passiveStats.quadWrites == 1u);
