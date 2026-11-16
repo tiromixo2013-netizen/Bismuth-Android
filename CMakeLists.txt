@@ -34,7 +34,7 @@ target_compile_features(bismuth_core PUBLIC cxx_std_17)
 target_compile_options(bismuth_core PRIVATE -Wall -Wextra -Wpedantic)
 
 if(ANDROID AND BISMUTH_ENABLE_GLES31)
-  add_library(bismuth_gles31 STATIC src/gles31_culler.cpp)
+  add_library(bismuth_gles31 STATIC src/gles31_culler.cpp src/gpu_timer_query.cpp)
   set_target_properties(bismuth_gles31 PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_include_directories(bismuth_gles31 PUBLIC include PRIVATE "${BISMUTH_GENERATED_INCLUDE_DIR}")
   target_compile_features(bismuth_gles31 PUBLIC cxx_std_17)
