@@ -26,7 +26,7 @@ typedef struct BismuthCandidate {
     float bottom;
     float right;
     float top;
-    uint32_t payload; /* Caller-defined stable output ID; for atlas use, set this to the current quad slot. */
+    uint32_t payload; /* Current atlas quad slot; must be less than atlas_capacity passed to bismuth_upload. */
     uint32_t pad0;
     uint32_t pad1;
     uint32_t pad2;
@@ -37,9 +37,9 @@ BISMUTH_API uint32_t bismuth_android_capabilities(void);
 BISMUTH_API void* bismuth_create(void);
 BISMUTH_API int bismuth_initialize(void* handle, char* error, uint32_t error_capacity);
 BISMUTH_API int bismuth_is_initialized(void* handle);
-BISMUTH_API int bismuth_upload(void* handle, const BismuthCandidate* candidates, uint32_t count);
+BISMUTH_API int bismuth_upload(void* handle, const BismuthCandidate* candidates, uint32_t count, uint32_t atlas_capacity);
 BISMUTH_API int bismuth_dispatch(void* handle, float left, float bottom, float right, float top, uint32_t count);
-/* SSBO of uint32 payload IDs for visible candidates, stable input order; for atlas use these are quad slots. */
+/* SSBO of uint32 atlas quad slots for visible candidates, stable input order. */
 BISMUTH_API uint32_t bismuth_visible_index_buffer(void* handle);
 /* Four-word DrawArraysIndirect command (6 vertices, visible candidate count). */
 BISMUTH_API uint32_t bismuth_indirect_command_buffer(void* handle);
