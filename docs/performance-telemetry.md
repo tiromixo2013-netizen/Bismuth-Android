@@ -179,3 +179,19 @@ telemetry session has no Bismuth `glDrawElements` detour at all.
 This is a code-path reduction, not a measured FPS claim. The first opt-in
 activation performs symbol lookup and hook installation and should be done
 before controlled gameplay/render stress, not in a frame-critical callback.
+
+
+## Observer-aware measurement fast path
+
+The batch-draw and EGL-swap hooks now acquire the observer before doing
+measurement-only work. If no observer is attached, batch drawing forwards
+directly to the original Cocos function without reading child metadata or
+sampling the clock; EGL swap forwards without taking a timestamp. The observer
+reference remains protected by the existing active-callback lifetime counter
+while a batch measurement is in progress. Empty atlas draw ranges also skip
+the dirty-byte read because they cannot trigger the existing non-empty upload
+invalidation record.
+
+These changes remove avoidable CPU-side measurement work in detached-observer
+and empty-draw cases. They do not bypass Cocos rendering, alter draw ordering,
+or claim a measurable FPS gain without device A/B testing.

@@ -204,11 +204,13 @@ EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
             ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
     // This timestamp marks the app's EGL buffer-submission boundary, not the
     // physical display presentation time or GPU completion.
-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
-    const auto monotonicNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
     AtlasPassiveObserver* observer = acquireObserver();
-    if (observer && monotonicNs > 0)
-        observer->recordFrameStart(static_cast<std::uint64_t>(monotonicNs));
+    if (observer) {
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        const auto monotonicNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+        if (monotonicNs > 0)
+            observer->recordFrameStart(static_cast<std::uint64_t>(monotonicNs));
+    }
     releaseObserver();
     return g_originalEglSwapBuffers
         ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
@@ -220,8 +222,15 @@ void hookedBatchDraw(void* self) {
         return;
     }
     ScopedBismuthTrace trace("Bismuth/BatchDraw");
-    // Read the target-verified child count before the original draw mutates no
-    // layout state. This is a single bounded metadata read, not a child walk.
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (!observer) {
+        if (g_originalBatchDraw) g_originalBatchDraw(self);
+        releaseObserver();
+        return;
+    }
+
+    // Read the target-verified child count only while an observer is attached.
+    // This is a single bounded metadata read, not a child walk.
     std::uint32_t childCount = 0;
     target_layout::readBatchChildCount(self, childCount);
 
@@ -229,8 +238,7 @@ void hookedBatchDraw(void* self) {
     if (g_originalBatchDraw) g_originalBatchDraw(self);
     const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - start).count();
-    AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordBatchDraw(
+    observer->recordBatchDraw(
         childCount, elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0u);
     releaseObserver();
 }
@@ -319,7 +327,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     // on every atlas draw unless the experimental replacement path is enabled.
     if (!bridgeEnabled) {
         std::uint8_t dirtyBefore = 0;
-        if (telemetryEnabled && self)
+        if (telemetryEnabled && self && count != 0)
             std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
                         sizeof(dirtyBefore));
         if (g_originalDrawNumberOfQuads)
@@ -343,7 +351,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     g_activeAtlasCount = count;
     g_activeAtlasStart = start;
     std::uint8_t dirtyBefore = 0;
-    if (telemetryEnabled && self)
+    if (telemetryEnabled && self && count != 0)
         std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
                     sizeof(dirtyBefore));
     if (g_originalDrawNumberOfQuads)
