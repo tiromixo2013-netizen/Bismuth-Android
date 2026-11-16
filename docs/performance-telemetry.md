@@ -66,3 +66,14 @@ metadata. It is a child-entry count, not a count of successful `updateTransform(
 calls: null entries and subclass dispatch may make those differ. The timing
 counter still measures the complete CPU wall time of the original batch draw,
 including the per-child virtual-call loop and atlas submission overhead.
+
+
+## Optional Perfetto / Android ATrace sections
+
+Configure an Android profiling build with
+`-DBISMUTH_ENABLE_ATRACE=ON`. When a system trace is actively recording,
+the hook emits the slices `Bismuth/BatchDraw` and
+`Bismuth/GPUBridge`. The GPUBridge slice measures CPU-side setup and
+submission time only; it is not GPU execution duration. The option is OFF by
+default and adds no ATrace calls to normal builds. Android CI compiles the
+profiling-enabled variant to keep the optional instrumentation buildable.
