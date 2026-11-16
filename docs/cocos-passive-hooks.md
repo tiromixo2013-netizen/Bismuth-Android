@@ -56,8 +56,8 @@ executing. Installation is opt-in; loading `libbismuth.so` alone does not
 install hooks.
 
 When loaded through the repository APK injector, `JNI_OnLoad` attempts to install
-the two hooks automatically because the injector places Bismuth immediately
-after `System.loadLibrary("cocos2dcpp")`. Query `bismuth_auto_hook_status()`
+the passive Cocos hook set automatically because the injector places Bismuth
+immediately after `System.loadLibrary("cocos2dcpp")`. Query `bismuth_auto_hook_status()`
 and `bismuth_auto_hook_error()` to see whether exact-binary validation and
 installation succeeded. A version mismatch is non-fatal to game startup.
 
@@ -69,6 +69,12 @@ it attempts to dispatch Bismuth's compute pipeline and submit the generated
 16-bit EBO with `glDrawElementsIndirect`. It saves and restores the current
 element-buffer and indirect-buffer bindings. If validation, initialization,
 upload, or dispatch fails, it calls the original `glDrawElements` unchanged.
+
+The bridge is disabled by default. A host integration or diagnostic loader
+must explicitly call `bismuth_set_gpu_draw_bridge_enabled(1)` after successful
+hook installation to activate it; call the same API with `0` to return to the
+original draw path. The exported query
+`bismuth_is_gpu_draw_bridge_enabled()` reports the toggle state.
 
 The first bridge intentionally marks every submitted atlas quad visible using
 finite full-range bounds. It verifies the generated EBO/indirect command and
