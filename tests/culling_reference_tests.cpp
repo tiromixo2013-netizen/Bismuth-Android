@@ -55,6 +55,9 @@ int main() {
     }));
     assert(buildAtlasElementIndices16({}, 0u, elements));
     assert(elements.empty());
+    assert(isValidAtlasSlot(2u, 3u));
+    assert(!isValidAtlasSlot(3u, 3u));
+    assert(!isValidAtlasSlot(0u, kAtlasMaxQuads16 + 1u));
     assert(!buildAtlasElementIndices16({3u}, 3u, elements));
     assert(elements.empty());
     assert(!buildAtlasElementIndices16({0u}, kAtlasMaxQuads16 + 1u, elements));
