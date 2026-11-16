@@ -96,8 +96,8 @@ int main() {
     // Passive per-frame telemetry is allocation-free and resets at frame start.
     AtlasObservationCounters observation;
     observation.beginFrame();
-    observation.recordBatchDraw(12u);
-    observation.recordBatchDraw(20u);
+    observation.recordBatchDraw(12u, 1200u);
+    observation.recordBatchDraw(20u, 2300u);
     observation.recordSpriteTransform(true);
     observation.recordSpriteTransform(false);
     observation.recordQuadWrite();
@@ -105,6 +105,8 @@ int main() {
     observation.recordDirtyUpload(32u);
     const AtlasObservationSnapshot observed = observation.snapshot();
     assert(observed.batchDrawCalls == 2u);
+    assert(observed.batchDrawCpuNsTotal == 3500u);
+    assert(observed.batchDrawCpuNsMax == 2300u);
     assert(observed.spriteTransformCalls == 2u);
     assert(observed.unknownTransformOverrides == 1u);
     assert(observed.quadWrites == 1u);
@@ -114,7 +116,8 @@ int main() {
     assert(observed.maxChildrenInBatch == 20u);
     observation.beginFrame();
     const AtlasObservationSnapshot cleared = observation.snapshot();
-    assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u);
+    assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u &&
+           cleared.batchDrawCpuNsTotal == 0u && cleared.batchDrawCpuNsMax == 0u);
     AtlasPassiveObserver passive;
     const AtlasRevision passiveStart = passive.revision();
     passive.recordQuadWrite(false); // failed original operation: no invalidation
