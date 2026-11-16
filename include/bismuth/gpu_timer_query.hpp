@@ -31,6 +31,7 @@ private:
     using GenQueriesFn = void (*)(GLsizei, GLuint*);
     using DeleteQueriesFn = void (*)(GLsizei, const GLuint*);
     using BeginQueryFn = void (*)(GLenum, GLuint);
+    using GetQueryivFn = void (*)(GLenum, GLenum, GLint*);
     using EndQueryFn = void (*)(GLenum);
     using GetQueryObjectuivFn = void (*)(GLuint, GLenum, GLuint*);
     using GetQueryObjectui64vFn = void (*)(GLuint, GLenum, GLuint64*);
@@ -43,6 +44,7 @@ private:
     GenQueriesFn genQueries_ = nullptr;
     DeleteQueriesFn deleteQueries_ = nullptr;
     BeginQueryFn beginQuery_ = nullptr;
+    GetQueryivFn getQueryiv_ = nullptr;
     EndQueryFn endQuery_ = nullptr;
     GetQueryObjectuivFn getQueryObjectuiv_ = nullptr;
     GetQueryObjectui64vFn getQueryObjectui64v_ = nullptr;
