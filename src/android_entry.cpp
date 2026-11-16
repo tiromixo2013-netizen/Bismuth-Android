@@ -44,7 +44,7 @@ extern "C" int bismuth_is_initialized(void* handle) {
     return instance->culler.isInitialized() ? 1 : 0;
 }
 extern "C" int bismuth_upload(void* handle, const BismuthCandidate* candidates,
-                               std::uint32_t count) {
+                               std::uint32_t count, std::uint32_t atlasCapacity) {
     if (!handle || (count && !candidates)) return -1;
     // Reject oversized input before allocating/copying user-provided records.
     if (count > BISMUTH_MAX_CANDIDATES) return -2;
@@ -53,7 +53,7 @@ extern "C" int bismuth_upload(void* handle, const BismuthCandidate* candidates,
         input.resize(count);
         std::memcpy(input.data(), candidates, static_cast<std::size_t>(count) * sizeof(BismuthCandidate));
     }
-    return static_cast<BismuthInstance*>(handle)->culler.uploadCandidates(input) ? 0 : -2;
+    return static_cast<BismuthInstance*>(handle)->culler.uploadCandidates(input, atlasCapacity) ? 0 : -2;
 }
 extern "C" int bismuth_dispatch(void* handle, float left, float bottom, float right,
                                  float top, std::uint32_t count) {
