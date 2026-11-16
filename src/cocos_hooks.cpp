@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <chrono>
 
 namespace bismuth {
 namespace {
@@ -165,10 +166,13 @@ void releaseObserver() noexcept {
 }
 
 void hookedBatchDraw(void* self) {
-    AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordBatchDraw(0);
-    releaseObserver();
+    const auto start = std::chrono::steady_clock::now();
     if (g_originalBatchDraw) g_originalBatchDraw(self);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) observer->recordBatchDraw(0, elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0u);
+    releaseObserver();
 }
 
 void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
