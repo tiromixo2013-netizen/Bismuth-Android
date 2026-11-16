@@ -31,7 +31,7 @@ jobs:
       - name: Install exact Android NDK revision
         run: |
           sdkmanager --install "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Verify exact Android NDK revision
         run: grep -q '^Pkg.Revision = 27.2.12479018      - name: Configure Android ARM64 GLES 3.1 backend
         run: >-
