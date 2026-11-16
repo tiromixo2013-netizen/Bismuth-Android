@@ -259,7 +259,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     }
     ScopedComputeState state;
     const auto failClosed = [&](const char* message) {
-        uploadedCount_ = 0;
+        uploadedCount_ = uploadedAtlasCapacity_ = 0;
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);
         if (error) *error = message;
