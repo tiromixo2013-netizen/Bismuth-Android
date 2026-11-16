@@ -12,7 +12,11 @@ public:
     Gles31Culler& operator=(const Gles31Culler&) = delete;
     // Call only with the owning GLES 3.1 context current on this thread.
     bool initialize(std::string* error = nullptr);
-    bool uploadCandidates(const std::vector<Candidate>& candidates, std::uint32_t atlasCapacity, std::string* error = nullptr);\n    // Build candidate bounds directly from the live Cocos atlas VBO on the GPU.\n    bool generateAtlasCandidates(GLuint atlasVertexBuffer, std::uint32_t startQuad,\n                                 std::uint32_t count, std::uint32_t atlasCapacity,\n                                 const float* mvpColumnMajor, std::string* error = nullptr);
+    bool uploadCandidates(const std::vector<Candidate>& candidates, std::uint32_t atlasCapacity, std::string* error = nullptr);
+    // Build candidate bounds directly from the live Cocos atlas VBO on the GPU.
+    bool generateAtlasCandidates(GLuint atlasVertexBuffer, std::uint32_t startQuad,
+                                 std::uint32_t count, std::uint32_t atlasCapacity,
+                                 const float* mvpColumnMajor, std::string* error = nullptr);
     // candidateCount must match the most recently uploaded candidate count.
     // A zero count writes an indirect command with instanceCount=0.
     bool dispatch(const Rect& view, std::uint32_t candidateCount, std::string* error = nullptr);
