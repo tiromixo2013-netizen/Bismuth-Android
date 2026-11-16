@@ -9,11 +9,13 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/shaders/classify.comp"
   "${CMAKE_CURRENT_SOURCE_DIR}/shaders/group_offsets.comp"
   "${CMAKE_CURRENT_SOURCE_DIR}/shaders/scatter.comp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/atlas_indices.comp")
+  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/atlas_indices.comp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/atlas_candidates.comp")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/classify.comp" BISMUTH_CLASSIFY_SHADER)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/group_offsets.comp" BISMUTH_OFFSETS_SHADER)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/scatter.comp" BISMUTH_SCATTER_SHADER)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/atlas_indices.comp" BISMUTH_ATLAS_INDICES_SHADER)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/atlas_candidates.comp" BISMUTH_ATLAS_CANDIDATES_SHADER)
 set(BISMUTH_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${BISMUTH_GENERATED_INCLUDE_DIR}")
 file(WRITE "${BISMUTH_GENERATED_INCLUDE_DIR}/embedded_shaders.hpp"
