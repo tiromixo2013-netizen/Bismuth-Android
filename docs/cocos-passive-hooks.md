@@ -7,7 +7,7 @@ Geometry Dash 2.2081 Cocos2d binary identified by GNU Build ID
 `ca621323d54c1d94f5f13a2778ce9c8baa31b9a8`.
 
 The adapter uses Dobby at pinned commit
-`5dfc8546954ce3b3198132ab13fddb89ee92cdd7` (Apache-2.0) for ARM64 inline
+`a418c6a7c493e6c599713a097ff823c84a40ba96` (Apache-2.0) for ARM64 inline
 trampolines. It does not patch unknown builds: it checks the loaded module's
 GNU Build ID and verifies both resolved symbols belong to
 `libcocos2dcpp.so` before installing either hook.
