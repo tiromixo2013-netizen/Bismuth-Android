@@ -16,5 +16,6 @@ jobs:
       - name: Build Geode mod
         uses: geode-sdk/build-geode-mod@main
         with:
-          directory: geode-mod
+          path: geode-mod
           target: Android64
+          combine: true
