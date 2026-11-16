@@ -68,7 +68,7 @@ if(ANDROID AND BISMUTH_ENABLE_GLES31)
     target_compile_definitions(bismuth_mod PRIVATE BISMUTH_ENABLE_ATRACE=1)
     target_link_libraries(bismuth_mod PRIVATE android)
   endif()
-  target_link_libraries(bismuth_mod PRIVATE bismuth_gles31 bismuth_core log)
+  target_link_libraries(bismuth_mod PRIVATE bismuth_gles31 bismuth_core log EGL)
   set_target_properties(bismuth_mod PROPERTIES OUTPUT_NAME "bismuth")
 endif()
 
