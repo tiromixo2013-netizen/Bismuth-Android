@@ -160,6 +160,17 @@ int main() {
     assert(frameStats.p99IntervalNs == 17000000ull);
     frameWindow.reset();
     assert(frameWindow.snapshot().sampleCount == 0u);
+    // The rolling window remains bounded and drops the oldest interval.
+    assert(frameWindow.recordFrameStart(0u));
+    for (std::uint64_t i = 1u; i <= FrameIntervalWindow::kWindowSize + 1u; ++i)
+        assert(frameWindow.recordFrameStart(i * 1000000ull));
+    const auto rolledStats = frameWindow.snapshot();
+    assert(rolledStats.sampleCount == FrameIntervalWindow::kWindowSize);
+    assert(rolledStats.lastIntervalNs == 1000000ull);
+    assert(rolledStats.meanIntervalNs == 1000000ull);
+    assert(rolledStats.p50IntervalNs == 1000000ull);
+    assert(rolledStats.p95IntervalNs == 1000000ull);
+    assert(rolledStats.p99IntervalNs == 1000000ull);
     AtlasPassiveObserver frameObserver;
     assert(frameObserver.recordFrameStart(500u));
     assert(frameObserver.recordFrameStart(16500500u));
