@@ -51,12 +51,22 @@ input order and are omitted for culled candidates.
 
 The GLES state guard now preserves indexed SSBO bindings 0..4 because the
 scatter pass consumes the candidate buffer at binding 4. Devices must expose at
-least five SSBO binding points. The offsets pass now also writes a separate five-word indexed-atlas command
-buffer (`count = visibleSlotCount * 6`, one instance when non-empty, zero
+least five SSBO binding points. The index-compaction pass reuses bindings 0..2. A fourth compute pass now consumes the compacted visible slot IDs and builds a
+packed 16-bit element-index buffer on the GPU. It writes three 32-bit words per
+quad, each word containing two 16-bit indices, reproducing the exact six-index
+atlas pattern without relying on optional 16-bit SSBO storage. The buffer is
+exposed separately and is intended to be bound as GL_ELEMENT_ARRAY_BUFFER
+with GL_UNSIGNED_SHORT. A shader-storage barrier precedes this pass and an
+element-array barrier follows it.
+
+The offsets pass also writes a separate five-word indexed-atlas command
+buffer (count = visibleSlotCount * 6, one instance when non-empty, zero
 first-index/base-vertex/base-instance). The original four-word arrays command
-remains separate and unchanged. The new command is only prepared as GPU output;
-this project does not yet issue an indexed indirect atlas draw, because support
-for the required GLES entry point/extension must be detected on the target.
+remains separate and unchanged. The compacted EBO and command are now prepared
+as GPU outputs; this project still does not issue an indexed indirect atlas
+draw. The required GLES indirect-draw entry point/extension must be detected
+on the target, and the engine's VAO, EBO, texture, blend, stencil and shader
+state must be integrated safely first.
 
 ## Why a separate indexed path is required
 
