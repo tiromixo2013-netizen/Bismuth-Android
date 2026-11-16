@@ -52,7 +52,7 @@ public:
         }
     }
     ~ScopedComputeState() {
-        for (GLuint i = 0; i < 5; ++i) {
+        for (GLuint i = 0; i < 6; ++i) {
             if (indexedStorage_[i] != 0 && indexedStorageSize_[i] > 0) {
                 glBindBufferRange(GL_SHADER_STORAGE_BUFFER, i,
                                   static_cast<GLuint>(indexedStorage_[i]),
