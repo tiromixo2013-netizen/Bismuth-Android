@@ -5,9 +5,9 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.2.0",
+  "version": "0.6.0",
   "developer": "Bismuth Project",
-  "description": "Experimental GLES 3.1 GPU draw bridge for Geometry Dash Android 2.2081.",
+  "description": "Experimental observer and GLES 3.1 compute-culling prototype for Geometry Dash Android 2.2081. GPU draw replacement is disabled.",
   "tags": ["performance", "utility"],
   "settings": {
     "gpu-title": {
