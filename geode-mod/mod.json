@@ -16,8 +16,8 @@
     },
     "gpu-draw-bridge-enabled": {
       "type": "bool",
-      "name": "Enable experimental GPU draw bridge",
-      "description": "Routes supported atlas draw calls through a GLES 3.1 compute-generated index buffer. The current bridge keeps every quad visible; GPU culling and measurable FPS gains are not implemented or guaranteed.",
+      "name": "GPU draw bridge (locked)",
+      "description": "Temporarily locked off. Real per-quad bounds, correct clip-space mapping, and device validation are required before enabling GPU draw replacement.",
       "default": false
     },
     "status-title": {
