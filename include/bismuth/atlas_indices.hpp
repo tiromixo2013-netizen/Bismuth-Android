@@ -14,7 +14,7 @@ struct IndexedDrawCommand {
     std::uint32_t instanceCount;
     std::uint32_t firstIndex;
     std::int32_t baseVertex;
-    std::uint32_t baseInstance;
+    std::uint32_t reservedMustBeZero;
 };
 static_assert(sizeof(IndexedDrawCommand) == 20,
               "GLES indexed indirect command must contain five 32-bit words");
