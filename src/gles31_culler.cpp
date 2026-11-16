@@ -203,17 +203,30 @@ bool Gles31Culler::uploadCandidates(const std::vector<Candidate>& candidates, st
     ScopedComputeState state;
     if (candidates.size() > kMaxCandidates) {
         if (error) *error = "Candidate upload exceeds the 16384 candidate prototype limit";
-        uploadedCount_ = 0; return false;
+        uploadedCount_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
+        return false;
     }
-    if (candidates.empty()) { uploadedCount_ = 0; return true; }
+    if (candidates.empty()) {
+        uploadedCount_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
+        return true;
+    }
     if (!allocate(static_cast<std::uint32_t>(candidates.size()), error)) {
-        uploadedCount_ = 0; return false;
+        uploadedCount_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
+        return false;
     }
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, candidates_);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
                     static_cast<GLsizeiptr>(candidates.size()) * sizeof(Candidate), candidates.data());
     if (glGetError() != GL_NO_ERROR) {
         uploadedCount_ = 0;
+        clearIndirectCommand(indirectCommand_);
+        clearIndexedCommand(indexedCommand_);
         if (error) *error = "Candidate upload failed";
         return false;
     }
