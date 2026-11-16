@@ -46,6 +46,27 @@ inline bool buildAtlasElementIndices16(
     return true;
 }
 
+// Pack the same six 16-bit indices into three 32-bit words per visible quad.
+// This mirrors atlas_indices.comp and keeps the GPU output compatible with
+// GL_UNSIGNED_SHORT element fetches without requiring 16-bit SSBO support.
+inline bool buildAtlasElementIndices16Packed(
+    const std::vector<std::uint32_t>& visibleSlots,
+    std::uint32_t atlasCapacity,
+    std::vector<std::uint32_t>& out) {
+    std::vector<std::uint16_t> indices;
+    if (!buildAtlasElementIndices16(visibleSlots, atlasCapacity, indices)) {
+        out.clear();
+        return false;
+    }
+    out.clear();
+    out.reserve(indices.size() / 2u);
+    for (std::size_t i = 0; i < indices.size(); i += 2u) {
+        out.push_back(static_cast<std::uint32_t>(indices[i]) |
+                      (static_cast<std::uint32_t>(indices[i + 1u]) << 16u));
+    }
+    return true;
+}
+
 inline bool makeIndexedDrawCommand(
     std::uint32_t visibleQuadCount,
     IndexedDrawCommand& out) noexcept {
