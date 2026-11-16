@@ -77,3 +77,16 @@ the hook emits the slices `Bismuth/BatchDraw` and
 submission time only; it is not GPU execution duration. The option is OFF by
 default and adds no ATrace calls to normal builds. Android CI compiles the
 profiling-enabled variant to keep the optional instrumentation buildable.
+
+
+## Live frame-cadence integration
+
+When the verified Cocos hooks are installed, Bismuth also attempts an optional
+hook on the process' exported `libEGL.so!eglSwapBuffers`. At each call it
+records a monotonic timestamp immediately before forwarding to the original
+EGL function. The 120-sample interval window therefore reports **app buffer-
+submission cadence** (mean and p50/p95/p99), not physical display presentation,
+GPU completion, or guaranteed compositor timing. The hook is optional and
+non-fatal: if the EGL symbol cannot be resolved from `libEGL.so` or Dobby
+cannot install it, the original rendering path and Cocos observer hooks remain
+available, but frame-cadence samples remain empty.
