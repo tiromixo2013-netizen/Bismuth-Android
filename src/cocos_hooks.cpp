@@ -2,6 +2,7 @@
 #include "bismuth/target_layout.hpp"
 #include "bismuth/telemetry_gate.hpp"
 #include "bismuth/observer_callback_guard.hpp"
+#include "bismuth/gpu_timer_query.hpp"
 
 #if defined(__ANDROID__) && defined(BISMUTH_ENABLE_COCOS_HOOKS)
 
@@ -78,6 +79,8 @@ GlDrawElementsFn g_originalGlDrawElements = nullptr;
 EglSwapBuffersFn g_originalEglSwapBuffers = nullptr;
 bool g_eglSwapBuffersHooked = false;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
+std::atomic<bool> g_gpuTimingEnabled{false};
+GlesGpuTimerQuery g_gpuTimerQuery{};
 TelemetryGate g_passiveTelemetryGate{};
 thread_local void* g_activeAtlasDraw = nullptr;
 thread_local unsigned int g_activeAtlasCount = 0;
@@ -330,6 +333,17 @@ void hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void* i
     if (g_originalGlDrawElements) g_originalGlDrawElements(mode, count, type, indices);
 }
 
+void callOriginalAtlasDraw(void* self, unsigned int count, unsigned int start) {
+    const bool timingEnabled = g_gpuTimingEnabled.load(std::memory_order_acquire);
+    bool queryStarted = false;
+    if (timingEnabled) {
+        g_gpuTimerQuery.poll();
+        queryStarted = g_originalDrawNumberOfQuads && g_gpuTimerQuery.begin();
+    }
+    callOriginalAtlasDraw(self, count, start);
+    if (queryStarted) g_gpuTimerQuery.end();
+}
+
 void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start) {
     const bool bridgeEnabled = g_gpuDrawBridgeEnabled.load(std::memory_order_relaxed);
     const bool telemetryEnabled = g_passiveTelemetryGate.enabled();
@@ -341,8 +355,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
         if (telemetryEnabled && self && count != 0)
             std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
                         sizeof(dirtyBefore));
-        if (g_originalDrawNumberOfQuads)
-            g_originalDrawNumberOfQuads(self, count, start);
+        callOriginalAtlasDraw(self, count, start);
         // The target clears dirty after glBufferSubData. GL success cannot be
         // checked without consuming the game's sticky error state.
         if (dirtyBefore != 0 && count != 0) {
@@ -695,6 +708,18 @@ bool isGpuDrawBridgeEnabled() noexcept {
     return g_gpuDrawBridgeEnabled.load(std::memory_order_acquire);
 }
 
+void setGpuTimingEnabled(bool enabled) noexcept {
+    g_gpuTimingEnabled.store(enabled, std::memory_order_release);
+}
+
+bool isGpuTimingEnabled() noexcept {
+    return g_gpuTimingEnabled.load(std::memory_order_acquire);
+}
+
+GpuTimingSnapshot gpuTimingSnapshot() noexcept {
+    return g_gpuTimerQuery.snapshot();
+}
+
 void detachCocosPassiveHooks(AtlasPassiveObserver* observer) noexcept {
     AtlasPassiveObserver* expected = observer;
     if (!g_observer.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel)) return;
@@ -714,6 +739,9 @@ void setPassiveTelemetryEnabled(bool) noexcept {}
 bool isPassiveTelemetryEnabled() noexcept { return false; }
 void setGpuDrawBridgeEnabled(bool) noexcept {}
 bool isGpuDrawBridgeEnabled() noexcept { return false; }
+void setGpuTimingEnabled(bool) noexcept {}
+bool isGpuTimingEnabled() noexcept { return false; }
+GpuTimingSnapshot gpuTimingSnapshot() noexcept { return {}; }
 void detachCocosPassiveHooks(AtlasPassiveObserver*) noexcept {}
 } // namespace bismuth
 
