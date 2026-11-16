@@ -10,7 +10,7 @@ from pathlib import Path
 import requests
 
 LEVEL_ID = "118509879"
-ENDPOINT = "https://www.boomlings.com/database/downloadGJLevel22.php"
+ENDPOINT = "http://www.boomlings.com/database/downloadGJLevel22.php"
 SECRET = "Wmfd2893gb7"
 
 def unpack(encoded: str) -> bytes:
