@@ -29,6 +29,12 @@ int main() {
     };
     auto stable = cullStable(ordered, Rect{-1, -1, 10, 10});
     assert((stable.visibleIndices == std::vector<std::uint32_t>{0, 1, 2}));
+    std::vector<Candidate> atlasCandidates = {
+        {{-5, 0, 5, 5}, 17}, {{200, 0, 210, 5}, 3},
+        {{10, 10, 20, 20}, 42}, {{0, 0, 1, 1}, 9}
+    };
+    assert((cullStablePayloads(atlasCandidates, view) == std::vector<std::uint32_t>{17, 42, 9}));
+    assert(cullStablePayloads(atlasCandidates, Rect{50, 50, 60, 60}).empty());
     const float nan = std::numeric_limits<float>::quiet_NaN();
     std::vector<Candidate> invalidBounds = {
         {{5, 5, 1, 1}, 10}, {{nan, 0, 10, 10}, 11},
