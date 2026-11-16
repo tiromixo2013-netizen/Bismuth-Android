@@ -1,4 +1,4 @@
-# Build-verified Cocos2d passive hooks
+# Cocos2d passive hooks and experimental GPU draw bridge
 
 ## Scope
 
@@ -61,9 +61,21 @@ after `System.loadLibrary("cocos2dcpp")`. Query `bismuth_auto_hook_status()`
 and `bismuth_auto_hook_error()` to see whether exact-binary validation and
 installation succeeded. A version mismatch is non-fatal to game startup.
 
-All installed hooks are pass-through observers only. They do not skip transforms,
-change GL state, replace draw calls, alter blend state, or submit Bismuth's
-generated EBO. The original engine functions remain in the call chain.
+All installed Cocos method hooks remain pass-through observers. An additional
+GLES `glDrawElements` interception provides an **experimental, opt-in** bridge:
+when explicitly enabled through `bismuth_set_gpu_draw_bridge_enabled(1)`, and
+only while the exact atlas `drawNumberOfQuads(count, start)` call is active,
+it attempts to dispatch Bismuth's compute pipeline and submit the generated
+16-bit EBO with `glDrawElementsIndirect`. It saves and restores the current
+element-buffer and indirect-buffer bindings. If validation, initialization,
+upload, or dispatch fails, it calls the original `glDrawElements` unchanged.
+
+The first bridge intentionally marks every submitted atlas quad visible using
+finite full-range bounds. It verifies the generated EBO/indirect command and
+preserves atlas slot order, but it does **not** cull sprites, remove the CPU
+child-transform traversal, or claim a performance improvement. It is disabled
+by default and must remain off until tested on the exact device/game build.
+The original draw call is the fail-closed fallback.
 
 `bismuth_destroy` detaches telemetry safely. The pass-through trampolines
 remain installed for process lifetime rather than unpatching executable code
@@ -78,6 +90,8 @@ while game threads may be running.
 - The insert/remove/move/count mutation signatures were checked against the
   target ARM64 disassembly; runtime callback execution still requires testing.
 - Calibrate sprite bounds against the actual camera/view coordinate space.
+- Replace the all-visible bridge candidates with observed quad bounds and a
+  verified view rectangle before enabling real GPU culling.
 - Preserve the original draw path until alpha, clipping, blend, painter order,
   and device performance are validated.
 
