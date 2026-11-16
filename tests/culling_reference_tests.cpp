@@ -58,6 +58,14 @@ int main() {
     assert(!buildAtlasElementIndices16({3u}, 3u, elements));
     assert(elements.empty());
     assert(!buildAtlasElementIndices16({0u}, kAtlasMaxQuads16 + 1u, elements));
+    std::vector<std::uint32_t> packedElements;
+    assert(buildAtlasElementIndices16Packed({2u, 0u}, 3u, packedElements));
+    assert((packedElements == std::vector<std::uint32_t>{
+        8u | (9u << 16u), 10u | (11u << 16u), 10u | (9u << 16u),
+        0u | (1u << 16u), 2u | (3u << 16u), 2u | (1u << 16u)
+    }));
+    assert(!buildAtlasElementIndices16Packed({3u}, 3u, packedElements));
+    assert(packedElements.empty());
     IndexedDrawCommand command{};
     assert(makeIndexedDrawCommand(7u, command));
     assert(command.count == 42u && command.instanceCount == 1u &&
