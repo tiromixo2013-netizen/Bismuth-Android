@@ -1,5 +1,6 @@
 #include "bismuth/culling_reference.hpp"
 #include "bismuth/atlas_indices.hpp"
+#include "bismuth/atlas_lifecycle.hpp"
 #include <cassert>
 #include <iostream>
 #include <limits>
@@ -58,5 +59,21 @@ int main() {
     assert(makeIndexedDrawCommand(0u, command));
     assert(command.count == 0u && command.instanceCount == 0u);
     assert(!makeIndexedDrawCommand(kAtlasMaxQuads16 + 1u, command));
+    // Atlas revision tracking: structural mutations invalidate slot maps;
+    // in-place quad writes invalidate derived quad data but not slot identity.
+    AtlasRevisionTracker revisions;
+    const AtlasRevision initialRevision = revisions.snapshot();
+    assert(revisions.slotMappingCurrent(initialRevision));
+    assert(revisions.quadDataCurrent(initialRevision));
+    revisions.recordQuadWrite();
+    assert(revisions.slotMappingCurrent(initialRevision));
+    assert(!revisions.quadDataCurrent(initialRevision));
+    const AtlasRevision afterQuadWrite = revisions.snapshot();
+    revisions.recordStructuralMutation();
+    assert(!revisions.slotMappingCurrent(afterQuadWrite));
+    assert(!revisions.quadDataCurrent(afterQuadWrite));
+    const AtlasRevision afterStructure = revisions.snapshot();
+    assert(revisions.slotMappingCurrent(afterStructure));
+    assert(revisions.quadDataCurrent(afterStructure));
     std::cout << "Bismuth-Android reference tests passed\n";
 }
