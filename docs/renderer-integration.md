@@ -442,8 +442,11 @@ a dispatch is rejected because the view rectangle is invalid, the uploaded
 candidate count does not match, or a compute dispatch reports a GLES error.
 It also invalidates the remembered upload count. This prevents a consumer from
 accidentally reusing a previous successful frame's draw count after a failed
-dispatch. Clearing is best-effort: if the GL driver also rejects the reset,
-the API reports that failure and the caller must not consume the command.
+dispatch. Clearing is best-effort and deliberately does not call `glGetError()` to
+verify the reset: GLES exposes a context-wide sticky error flag, so reading it
+inside this helper could consume an unrelated error raised by the game. The
+caller must not consume the command after a rejected dispatch, regardless of
+whether the reset itself can be verified.
 
 This is a defensive property of the standalone prototype only. It does not
 replace renderer-side validation, and it has not yet been exercised on a
