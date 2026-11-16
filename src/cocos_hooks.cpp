@@ -178,11 +178,28 @@ void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
     releaseObserver();
 }
 
+bool readCurrentMvp(GLint program, GLfloat* matrix) {
+    static constexpr const char* names[] = {
+        "CC_MVPMatrix", "u_MVPMatrix", "uMVPMatrix", "u_MVP"
+    };
+    for (const char* name : names) {
+        const GLint location = glGetUniformLocation(static_cast<GLuint>(program), name);
+        if (location < 0) continue;
+        glGetUniformfv(static_cast<GLuint>(program), location, matrix);
+        bool finite = true;
+        for (unsigned int i = 0; i < 16; ++i)
+            finite = finite && std::isfinite(matrix[i]);
+        if (finite) return true;
+    }
+    return false;
+}
+
 bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
     constexpr unsigned int kMaxBridgeQuads = 16384u;
     if (!atlas || !g_gpuDrawBridgeEnabled.load(std::memory_order_acquire) ||
         !g_originalGlDrawElements || quadCount == 0 || quadCount > kMaxBridgeQuads)
         return false;
+
     std::uint32_t atlasCapacity = 0;
     std::uint32_t usedQuads = 0;
     std::memcpy(&atlasCapacity, static_cast<const std::uint8_t*>(atlas) + 0x50, sizeof(atlasCapacity));
@@ -192,8 +209,31 @@ bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) 
         start > atlasCapacity || quadCount > atlasCapacity - start)
         return false;
 
-    // First integration stage: all quads are kept visible. This validates the
-    // generated EBO/indirect draw while camera-space bounds remain uncalibrated.
+    // Read the active Cocos position stream and its MVP matrix. If the shader or
+    // vertex layout differs from the calibrated atlas path, retain the original draw.
+    GLint program = 0;
+    GLint stride = 0;
+    GLint positionSize = 0;
+    GLint positionType = 0;
+    GLint positionEnabled = 0;
+    GLint attributeBuffer = 0;
+    void* positionPointer = nullptr;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &attributeBuffer);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &stride);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_SIZE, &positionSize);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_TYPE, &positionType);
+    glGetVertexAttribPointerv(0, GL_VERTEX_ATTRIB_ARRAY_POINTER, &positionPointer);
+    const std::uintptr_t positionOffset = reinterpret_cast<std::uintptr_t>(positionPointer);
+    if (program == 0 || positionEnabled != GL_TRUE || attributeBuffer == 0 ||
+        stride != 24 || positionSize != 3 || positionType != GL_FLOAT ||
+        positionOffset != 0)
+        return false;
+
+    GLfloat mvp[16] = {};
+    if (!readCurrentMvp(program, mvp)) return false;
+
     static Gles31Culler* culler = new (std::nothrow) Gles31Culler();
     if (!culler) return false;
     static bool initializationAttempted = false;
@@ -204,18 +244,9 @@ bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) 
     }
     if (!initializationSucceeded || !culler->isInitialized()) return false;
 
-    thread_local std::vector<Candidate> candidates;
-    candidates.resize(quadCount);
-    const float limit = std::numeric_limits<float>::max();
-    for (unsigned int i = 0; i < quadCount; ++i) {
-        Candidate& candidate = candidates[i];
-        candidate.bounds = Bounds{-limit, -limit, limit, limit};
-        candidate.payload = start + i;
-        candidate.pad0 = candidate.pad1 = candidate.pad2 = 0;
-    }
-    const Rect fullView{-limit, -limit, limit, limit};
-    if (!culler->uploadCandidates(candidates, atlasCapacity, nullptr) ||
-        !culler->dispatch(fullView, quadCount, nullptr))
+    if (!culler->generateAtlasCandidates(static_cast<GLuint>(attributeBuffer),
+                                         start, quadCount, atlasCapacity, mvp, nullptr) ||
+        !culler->dispatch(Rect{-1.0f, -1.0f, 1.0f, 1.0f}, quadCount, nullptr))
         return false;
 
     GLint previousElementBuffer = 0;
