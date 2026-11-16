@@ -3,7 +3,25 @@
 #include "bismuth/capacity_growth.hpp"
 #include <cmath>
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
+#pragma push_macro("glBindVertexArray")
+#pragma push_macro("glDeleteVertexArrays")
+#pragma push_macro("glGenVertexArrays")
+#pragma push_macro("glBindVertexArrayOES")
+#pragma push_macro("glDeleteVertexArraysOES")
+#pragma push_macro("glGenVertexArraysOES")
+#undef glBindVertexArray
+#undef glDeleteVertexArrays
+#undef glGenVertexArrays
+#undef glBindVertexArrayOES
+#undef glDeleteVertexArraysOES
+#undef glGenVertexArraysOES
 #include <GLES3/gl31.h>
+#pragma pop_macro("glGenVertexArraysOES")
+#pragma pop_macro("glDeleteVertexArraysOES")
+#pragma pop_macro("glBindVertexArrayOES")
+#pragma pop_macro("glGenVertexArrays")
+#pragma pop_macro("glDeleteVertexArrays")
+#pragma pop_macro("glBindVertexArray")
 #endif
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include <embedded_shaders.hpp>
