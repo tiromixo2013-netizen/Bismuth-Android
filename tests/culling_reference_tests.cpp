@@ -2,6 +2,7 @@
 #include "bismuth/atlas_indices.hpp"
 #include "bismuth/atlas_lifecycle.hpp"
 #include "bismuth/atlas_observation.hpp"
+#include "bismuth/capacity_growth.hpp"
 #include "bismuth/target_layout.hpp"
 #include <array>
 #include <cassert>
@@ -11,6 +12,15 @@
 #include <vector>
 using namespace bismuth;
 int main() {
+    // Geometric SSBO growth: preserve capacity, double gradually, and clamp.
+    assert(nextWorkgroupCapacity(0u, 1u, 128u) == 1u);
+    assert(nextWorkgroupCapacity(1u, 2u, 128u) == 2u);
+    assert(nextWorkgroupCapacity(2u, 3u, 128u) == 4u);
+    assert(nextWorkgroupCapacity(4u, 4u, 128u) == 4u);
+    assert(nextWorkgroupCapacity(64u, 65u, 128u) == 128u);
+    assert(nextWorkgroupCapacity(128u, 129u, 128u) == 0u);
+    assert(nextWorkgroupCapacity(0u, 0u, 128u) == 0u);
+
     const Rect view{0, 0, 100, 100};
     std::vector<Candidate> candidates = {
         {{-10, 10, 10, 20}, 0}, {{110, 10, 120, 20}, 1},

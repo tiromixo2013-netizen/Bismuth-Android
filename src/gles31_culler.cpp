@@ -1,5 +1,6 @@
 #include "bismuth/gles31_culler.hpp"
 #include "bismuth/atlas_indices.hpp"
+#include "bismuth/capacity_growth.hpp"
 #include <cmath>
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include <embedded_shaders.hpp>
@@ -116,6 +117,8 @@ void Gles31Culler::reset() noexcept {
     for (GLuint buffer : buffers) hasBuffer = hasBuffer || buffer != 0;
     if (hasBuffer) glDeleteBuffers(9, buffers);
     classifyProgram_ = offsetsProgram_ = scatterProgram_ = atlasIndicesProgram_ = 0;
+    classifyViewLocation_ = classifyCountLocation_ = -1;
+    offsetsGroupCountLocation_ = scatterCountLocation_ = atlasCandidateCountLocation_ = -1;
     candidates_ = flags_ = localOffsets_ = groupSums_ = 0;
     groupOffsets_ = visibleIndices_ = indirectCommand_ = indexedCommand_ = atlasElementIndices_ = 0;
     capacity_ = groupCapacity_ = uploadedCount_ = uploadedAtlasCapacity_ = 0;
@@ -157,6 +160,22 @@ bool Gles31Culler::initialize(std::string* error) {
     if (!scatterProgram_) { reset(); return false; }
     atlasIndicesProgram_ = compileCompute(shaders::atlasIndices, error);
     if (!atlasIndicesProgram_) { reset(); return false; }
+
+    // Resolve all uniforms at program-link time, not once per dispatch. A
+    // missing/optimized-out uniform is treated as an initialization failure.
+    classifyViewLocation_ = glGetUniformLocation(classifyProgram_, "uView");
+    classifyCountLocation_ = glGetUniformLocation(classifyProgram_, "uCount");
+    offsetsGroupCountLocation_ = glGetUniformLocation(offsetsProgram_, "uGroupCount");
+    scatterCountLocation_ = glGetUniformLocation(scatterProgram_, "uCount");
+    atlasCandidateCountLocation_ = glGetUniformLocation(atlasIndicesProgram_, "uCandidateCount");
+    if (classifyViewLocation_ < 0 || classifyCountLocation_ < 0 ||
+        offsetsGroupCountLocation_ < 0 || scatterCountLocation_ < 0 ||
+        atlasCandidateCountLocation_ < 0) {
+        if (error) *error = "Failed to resolve one or more required compute shader uniforms";
+        reset();
+        return false;
+    }
+
     glGenBuffers(1, &candidates_); glGenBuffers(1, &flags_); glGenBuffers(1, &localOffsets_);
     glGenBuffers(1, &groupSums_); glGenBuffers(1, &groupOffsets_); glGenBuffers(1, &visibleIndices_);
     glGenBuffers(1, &indirectCommand_); glGenBuffers(1, &indexedCommand_); glGenBuffers(1, &atlasElementIndices_);
@@ -181,7 +200,14 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
         return false;
     }
     if (count <= capacity_) return true;
-    const std::uint32_t groups = (count + kWorkgroupSize - 1u) / kWorkgroupSize;
+    const std::uint32_t requiredGroups = (count + kWorkgroupSize - 1u) / kWorkgroupSize;
+    // Geometric growth amortizes expensive GLES buffer reallocations when a
+    // workload grows gradually. Storage never exceeds the prototype's 128 groups.
+    const std::uint32_t groups = nextWorkgroupCapacity(groupCapacity_, requiredGroups, kMaxGroups);
+    if (groups == 0u) {
+        if (error) *error = "Unable to determine a valid GLES buffer capacity";
+        return false;
+    }
     const std::uint32_t newCapacity = groups * kWorkgroupSize;
     if (!bufferData(candidates_, static_cast<GLsizeiptr>(newCapacity) * sizeof(Candidate)) ||
         !bufferData(flags_, static_cast<GLsizeiptr>(newCapacity) * sizeof(GLuint)) ||
@@ -195,7 +221,8 @@ bool Gles31Culler::allocate(std::uint32_t count, std::string* error) {
         if (error) *error = "Failed to allocate GLES storage buffers";
         return false;
     }
-    capacity_ = newCapacity; groupCapacity_ = groups;
+    capacity_ = newCapacity;
+    groupCapacity_ = groups;
     return true;
 }
 
@@ -274,13 +301,13 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         uploadedCount_ = uploadedAtlasCapacity_ = 0;
         return true;
     }
-    if (!classifyProgram_ || count > capacity_ || count != uploadedCount_ || uploadedAtlasCapacity_ == 0) {
+    if (!isInitialized() || count > capacity_ || count != uploadedCount_ || uploadedAtlasCapacity_ == 0) {
         return failClosed("Culler is uninitialized or candidate count does not match the latest upload");
     }
     const GLuint groups = (count + kWorkgroupSize - 1u) / kWorkgroupSize;
     glUseProgram(classifyProgram_);
-    glUniform4f(glGetUniformLocation(classifyProgram_, "uView"), view.left, view.bottom, view.right, view.top);
-    glUniform1ui(glGetUniformLocation(classifyProgram_, "uCount"), count);
+    glUniform4f(classifyViewLocation_, view.left, view.bottom, view.right, view.top);
+    glUniform1ui(classifyCountLocation_, count);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, candidates_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flags_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, localOffsets_);
@@ -288,7 +315,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glDispatchCompute(groups, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     glUseProgram(offsetsProgram_);
-    glUniform1ui(glGetUniformLocation(offsetsProgram_, "uGroupCount"), groups);
+    glUniform1ui(offsetsGroupCountLocation_, groups);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, groupSums_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, groupOffsets_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirectCommand_);
@@ -296,7 +323,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glDispatchCompute(1, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     glUseProgram(scatterProgram_);
-    glUniform1ui(glGetUniformLocation(scatterProgram_, "uCount"), count);
+    glUniform1ui(scatterCountLocation_, count);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, flags_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, localOffsets_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, groupOffsets_);
@@ -305,7 +332,7 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
     glDispatchCompute(groups, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     glUseProgram(atlasIndicesProgram_);
-    glUniform1ui(glGetUniformLocation(atlasIndicesProgram_, "uCandidateCount"), count);
+    glUniform1ui(atlasCandidateCountLocation_, count);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, visibleIndices_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, atlasElementIndices_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indexedCommand_);
