@@ -3,6 +3,9 @@
 #include "bismuth/capacity_growth.hpp"
 #include <cmath>
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
+#include <GLES3/gl31.h>
+#endif
+#if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include <embedded_shaders.hpp>
 namespace bismuth {
 namespace {
