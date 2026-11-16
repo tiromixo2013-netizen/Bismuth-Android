@@ -21,7 +21,8 @@ enum BismuthCapability {
     BISMUTH_CAP_PASSIVE_OBSERVER_API = 1u << 3,
     BISMUTH_CAP_COCOS_PASSIVE_HOOKS = 1u << 4,
     BISMUTH_CAP_GPU_DRAW_BRIDGE = 1u << 5,
-    BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL = 1u << 6
+    BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL = 1u << 6,
+    BISMUTH_CAP_GPU_TIMER_QUERY = 1u << 7
 };
 
 /* Bounds must be finite and normalized (left <= right, bottom <= top). Invalid bounds are culled. */
@@ -59,6 +60,19 @@ typedef struct BismuthAtlasTelemetry {
     uint64_t frame_interval_p99_ns;
 } BismuthAtlasTelemetry;
 
+/* Asynchronous GPU execution timing for the original atlas draw, when the
+ * driver exposes GL_EXT_disjoint_timer_query. Values are nanoseconds. */
+typedef struct BismuthGpuTiming {
+    uint32_t supported;
+    uint32_t sample_count;
+    uint64_t last_gpu_ns;
+    uint64_t mean_gpu_ns;
+    uint64_t p95_gpu_ns;
+    uint64_t p99_gpu_ns;
+    uint64_t disjoint_events;
+    uint64_t skipped_samples;
+} BismuthGpuTiming;
+
 BISMUTH_API const char* bismuth_android_build_id(void);
 BISMUTH_API uint32_t bismuth_android_capabilities(void);
 BISMUTH_API void* bismuth_create(void);
@@ -88,6 +102,11 @@ BISMUTH_API int bismuth_is_gpu_draw_bridge_enabled(void);
  * This does not unpatch hooks; the original game functions always remain active. */
 BISMUTH_API void bismuth_set_passive_telemetry_enabled(int enabled);
 BISMUTH_API int bismuth_is_passive_telemetry_enabled(void);
+/* GPU timer queries are opt-in; enabling is safe only from the render thread. */
+BISMUTH_API void bismuth_set_gpu_timing_enabled(int enabled);
+BISMUTH_API int bismuth_is_gpu_timing_enabled(void);
+BISMUTH_API int bismuth_is_gpu_timing_supported(void);
+BISMUTH_API int bismuth_gpu_timing_snapshot(BismuthGpuTiming* timing);
 /* Automatic JNI_OnLoad hook status: 1=installed, -1=allocation failure, -2=validation/install failure, 0=not attempted. */
 BISMUTH_API int bismuth_auto_hook_status(void);
 BISMUTH_API const char* bismuth_auto_hook_error(void);
