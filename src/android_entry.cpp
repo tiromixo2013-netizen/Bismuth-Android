@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <new>
 #include <string>
@@ -28,6 +29,17 @@ static_assert(sizeof(BismuthCandidate) == sizeof(bismuth::Candidate),
               "C API candidate layout must match the GLES shader record");
 static_assert(sizeof(BismuthAtlasTelemetry) == sizeof(bismuth::AtlasObservationSnapshot),
               "C API telemetry layout must match the observer snapshot");
+static_assert(offsetof(BismuthAtlasTelemetry, max_children_in_batch) ==
+              offsetof(bismuth::AtlasObservationSnapshot, maxChildrenInBatch),
+              "C API batch child count offset mismatch");
+static_assert(offsetof(BismuthAtlasTelemetry, frame_interval_sample_count) ==
+              offsetof(bismuth::AtlasObservationSnapshot, frameIntervals) +
+              offsetof(bismuth::FrameIntervalSnapshot, sampleCount),
+              "C API frame sample count offset mismatch");
+static_assert(offsetof(BismuthAtlasTelemetry, frame_interval_last_ns) ==
+              offsetof(bismuth::AtlasObservationSnapshot, frameIntervals) +
+              offsetof(bismuth::FrameIntervalSnapshot, lastIntervalNs),
+              "C API frame interval offset mismatch");
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
@@ -172,6 +184,7 @@ extern "C" int bismuth_observer_snapshot(void* handle, BismuthAtlasTelemetry* te
     telemetry->dirty_uploads = counters.dirtyUploads;
     telemetry->uploaded_quads = counters.uploadedQuads;
     telemetry->max_children_in_batch = counters.maxChildrenInBatch;
+    telemetry->reserved0 = 0;
     telemetry->frame_interval_sample_count = counters.frameIntervals.sampleCount;
     telemetry->frame_interval_last_ns = counters.frameIntervals.lastIntervalNs;
     telemetry->frame_interval_mean_ns = counters.frameIntervals.meanIntervalNs;
