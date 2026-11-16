@@ -1,6 +1,7 @@
 #pragma once
 
 #include "bismuth/atlas_observation.hpp"
+#include "bismuth/gpu_timer_query.hpp"
 #include <string>
 
 namespace bismuth {
@@ -21,6 +22,12 @@ bool isPassiveTelemetryEnabled() noexcept;
 // for controlled on-device validation after passive hooks are confirmed.
 void setGpuDrawBridgeEnabled(bool enabled) noexcept;
 bool isGpuDrawBridgeEnabled() noexcept;
+
+// Optional asynchronous GPU timing around the original atlas draw. Queries
+// are disabled by default and never wait for completion.
+void setGpuTimingEnabled(bool enabled) noexcept;
+bool isGpuTimingEnabled() noexcept;
+GpuTimingSnapshot gpuTimingSnapshot() noexcept;
 
 void detachCocosPassiveHooks(AtlasPassiveObserver* observer) noexcept;
 

@@ -36,7 +36,7 @@ Use Android NDK + CMake and set `-DBISMUTH_ENABLE_GLES31=ON`. The calling applic
 - GPU shaders have not yet been validated across real Android drivers.
 - No FPS or latency improvement is claimed until on-device A/B profiling is complete.
 
-See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work. See [docs/performance-telemetry.md](docs/performance-telemetry.md) for the first CPU timing counters and their limitations.
+See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work. See [docs/performance-telemetry.md](docs/performance-telemetry.md) for CPU timing counters and [docs/gpu-timing.md](docs/gpu-timing.md) for opt-in asynchronous GPU timing and its limitations.
 
 ## Native shared-library API (bootstrap)
 
@@ -94,3 +94,15 @@ during a lower-overhead comparison, then restore it with `(1)`. This leaves
 the safety-checked pass-through hooks installed and does not alter the game's
 original rendering behavior. See
 [docs/performance-telemetry.md](docs/performance-telemetry.md) for details.
+
+
+## Asynchronous GPU timing
+
+An opt-in `GL_EXT_disjoint_timer_query` ring can measure GPU execution time
+inside the original texture-atlas draw call. It uses four query objects, polls
+results without blocking, discards disjoint samples, and publishes last/mean/
+p95/p99 values through `BismuthGpuTiming`. Enable it with
+`bismuth_set_gpu_timing_enabled(1)`; it remains off by default. This measures
+atlas-draw GPU time, not whole-frame GPU time or display presentation. It has
+not yet been tested on a physical Android device, and no in-game settings panel
+is claimed yet. See [docs/gpu-timing.md](docs/gpu-timing.md).

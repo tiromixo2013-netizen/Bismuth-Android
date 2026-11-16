@@ -72,7 +72,7 @@ extern "C" std::uint32_t bismuth_android_capabilities() {
     return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
            BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API |
            BISMUTH_CAP_COCOS_PASSIVE_HOOKS | BISMUTH_CAP_GPU_DRAW_BRIDGE |
-           BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL;
+           BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL | BISMUTH_CAP_GPU_TIMER_QUERY;
 }
 extern "C" void* bismuth_create() {
     return new (std::nothrow) BismuthInstance{};
@@ -137,6 +137,29 @@ extern "C" void bismuth_set_passive_telemetry_enabled(int enabled) {
 }
 extern "C" int bismuth_is_passive_telemetry_enabled() {
     return bismuth::isPassiveTelemetryEnabled() ? 1 : 0;
+}
+
+extern "C" void bismuth_set_gpu_timing_enabled(int enabled) {
+    bismuth::setGpuTimingEnabled(enabled != 0);
+}
+extern "C" int bismuth_is_gpu_timing_enabled() {
+    return bismuth::isGpuTimingEnabled() ? 1 : 0;
+}
+extern "C" int bismuth_is_gpu_timing_supported() {
+    return bismuth::gpuTimingSnapshot().supported ? 1 : 0;
+}
+extern "C" int bismuth_gpu_timing_snapshot(BismuthGpuTiming* timing) {
+    if (!timing) return -1;
+    const auto snapshot = bismuth::gpuTimingSnapshot();
+    timing->supported = snapshot.supported ? 1u : 0u;
+    timing->sample_count = snapshot.sampleCount;
+    timing->last_gpu_ns = snapshot.lastGpuNs;
+    timing->mean_gpu_ns = snapshot.meanGpuNs;
+    timing->p95_gpu_ns = snapshot.p95GpuNs;
+    timing->p99_gpu_ns = snapshot.p99GpuNs;
+    timing->disjoint_events = snapshot.disjointEvents;
+    timing->skipped_samples = snapshot.skippedSamples;
+    return 0;
 }
 
 extern "C" int bismuth_auto_hook_status() {
