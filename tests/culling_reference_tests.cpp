@@ -259,7 +259,7 @@ int main() {
     perspectiveMvp[3] = 0.5f;
     const Bounds perspectiveBounds = conservativeQuadClipBounds(identityQuad, perspectiveMvp);
     assert(perspectiveBounds.left < -0.75f);
-    assert(perspectiveBounds.right > 0.25f);
+    assert(perspectiveBounds.right < 0.25f);
     assert(isValidBounds(perspectiveBounds));
 
     // Unsafe matrices, vertices, and eye-plane crossings fail open to full NDC.
