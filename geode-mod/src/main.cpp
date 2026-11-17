@@ -59,6 +59,7 @@ struct ShizukuSnapshot {
 ShizukuSnapshot g_shizukuSnapshot;
 int g_shizukuSocket = -1;
 bool g_shizukuConnecting = false;
+bool g_shizukuConnected = false;
 std::string g_shizukuRx;
 auto g_shizukuNextPoll = std::chrono::steady_clock::time_point{};
 
@@ -66,6 +67,7 @@ void closeShizukuSocket() {
     if (g_shizukuSocket >= 0) ::close(g_shizukuSocket);
     g_shizukuSocket = -1;
     g_shizukuConnecting = false;
+    g_shizukuConnected = false;
     g_shizukuRx.clear();
 }
 
@@ -83,6 +85,7 @@ void parseShizukuLine(const std::string& line) {
     g_shizukuSnapshot.gpuTemp = values[3];
     g_shizukuSnapshot.ramUsedMb = values[4];
     g_shizukuSnapshot.ramTotalMb = values[5];
+    g_shizukuConnected = true;
 }
 
 void pollShizukuBridge() {
@@ -417,6 +420,7 @@ void updateHud(float dt, double updateCpuMs) {
     out.setf(std::ios::fixed);
     out.precision(1);
     out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\n";
+    if (Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) out << "SHIZUKU " << (g_shizukuConnected ? "CONNECTED" : "WAITING") << "\n";
     out.precision(2);
     out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\n";
     if (Mod::get()->getSettingValue<bool>("monitor-cpu")) {
@@ -435,6 +439,9 @@ void updateHud(float dt, double updateCpuMs) {
     }
     if (graphEnabled) out << "FRAME GRAPH " << makeFrameGraph() << "\n";
     if (processRssMb >= 0.0) { out.precision(1); out << "PROCESS RSS " << processRssMb << " MB\n"; }
+    if (g_shizukuSnapshot.ramTotalMb > 0.0 && g_shizukuSnapshot.ramUsedMb >= 0.0) {
+        out.precision(0); out << "SYSTEM RAM " << g_shizukuSnapshot.ramUsedMb << " / " << g_shizukuSnapshot.ramTotalMb << " MB\n";
+    }
     if (rendererEnabled) {
         out.precision(2);
         out << "SPRITEBATCH " << g_batchDrawCallsLast << " | CHILDREN " << g_batchChildrenLast
