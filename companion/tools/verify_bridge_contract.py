@@ -38,6 +38,7 @@ class BridgeContractTests(unittest.TestCase):
         self.assertIn("parsed != field.size()", GEODE)
         self.assertIn("validPercent(values[0])", GEODE)
         self.assertIn("g_shizukuSnapshot = ShizukuSnapshot{}", GEODE)
+        self.assertIn("telemetry timeout after 2s", GEODE)
 
 
 if __name__ == "__main__":
