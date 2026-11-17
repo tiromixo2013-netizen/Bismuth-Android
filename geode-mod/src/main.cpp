@@ -9,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <unistd.h>
@@ -329,8 +330,7 @@ class $modify(BismuthEditorPauseLayer, EditorPauseLayer) {
 };
 
 $on_mod(Loaded) {
-    // Keep renderer hooks disabled in the Geode package until the pre-render
-    // installation path and target binary have been validated on-device.
+    // Register safe Geode-level telemetry hooks; no draw replacement or GPU culling is enabled.
     log::info("Bismuth: Geode mod loaded; PlayLayer and CCSpriteBatchNode telemetry hooks are registered.");
     if (Mod::get()->getSettingValue<bool>("diagnostics")) {
         log::info("Bismuth diagnostics: HUD reports PlayLayer cadence, CPU update time, SpriteBatch draw invocations/children and batch CPU submission time. GPU execution time and raw GL draw calls are not measured.");
