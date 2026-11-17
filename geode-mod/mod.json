@@ -5,9 +5,9 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "developer": "Bismuth Project",
-  "description": "Android ARM64 compact performance HUD with frame-rate, process CPU, best-effort GPU and thermal telemetry.",
+  "description": "Android ARM64 in-game performance monitor with frame analysis, process CPU, best-effort devfreq GPU, thermal and renderer telemetry.",
   "tags": [
     "performance",
     "utility"
