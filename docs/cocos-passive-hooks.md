@@ -1,103 +1,66 @@
 # Cocos2d passive hooks and experimental GPU draw bridge
 
-## Scope
+## Scope and current activation state
 
-The Android ARM64 build can compile a passive hook adapter for the exact
+The Android ARM64 native library contains a passive hook adapter for the exact
 Geometry Dash 2.2081 Cocos2d binary identified by GNU Build ID
 `ca621323d54c1d94f5f13a2778ce9c8baa31b9a8`.
 
+**Important: the current Geode Android64 package does not install these hooks.**
+The Geode integration intentionally runs in safe mode because its Loaded event
+may occur after the game render path is active and other mods may already own
+hooks on the same Cocos2d methods. The pause-menu settings UI remains available,
+but native telemetry and GPU timing are dormant. Do not describe this adapter
+as active in the Geode package.
+
 The adapter uses Dobby at pinned commit
 `a418c6a7c493e6c599713a097ff823c84a40ba96` (Apache-2.0) for ARM64 inline
-trampolines. It does not patch unknown builds: it checks the loaded module's
-GNU Build ID and verifies both resolved symbols belong to
-`libcocos2dcpp.so` before installing either hook.
+trampolines. Its installation routine checks the loaded module's GNU Build ID
+and verifies resolved Cocos symbols belong to `libcocos2dcpp.so`. These
+checks identify the target binary; they do not prove that a hook is compatible
+with other mods or safe to install after rendering has begun.
 
-## Installed passive hooks
+## Native hook set (experimental; not activated by Geode)
 
-- `CCSpriteBatchNode::draw()`: records a batch draw event, then calls the
-  original function unchanged.
-- `CCTextureAtlas::updateQuad(quad, index)`: calls the original function
-  first, then records a successful quad-content write.
-- `CCTextureAtlas::removeAllQuads()`: calls the original function first, then
-  invalidates the atlas slot mapping.
-- `CCTextureAtlas::resizeCapacity(capacity)`: preserves the original boolean
-  result and invalidates the slot mapping whenever a different capacity was
-  requested. The target routine can partially tear down storage on allocation
-  failure, so invalidation is conservative even when it returns false.
-- `CCTextureAtlas::insertQuad`, `insertQuads`, and `insertQuadFromIndex`:
-  forward the original void-returning operation, then invalidate the slot map.
-- `CCTextureAtlas::removeQuadAtIndex` and `removeQuadsAtIndex`: forward the
-  original void-returning operation, then invalidate the slot map.
-- Both verified overloads of `CCTextureAtlas::moveQuadsFromIndex` (two and
-  three unsigned-integer arguments after `this`): forward the original
-  operation, then invalidate the slot map.
-- `CCTextureAtlas::increaseTotalQuadsWith`: forwards the original
-  void-returning operation, then invalidates the slot map because the live
-  quad count changes.
-- `CCTextureAtlas::drawNumberOfQuads(count, start)`: observes the dirty byte
-  before forwarding the original draw. If a non-empty draw enters with dirty
-  data, it conservatively invalidates cached quad data after the original
-  call. The engine issues `glBufferSubData` and clears its dirty byte, but GL
-  success is not observable without consuming the game's GL error state, so
-  this hook does not claim or count a confirmed successful upload.
+The native adapter contains pass-through wrappers for:
+- `CCSpriteBatchNode::draw()`
+- `CCSprite::updateTransform()`
+- `CCTextureAtlas::updateQuad()`
+- `CCTextureAtlas::drawNumberOfQuads(count, start)`
+- Atlas insert, remove, move, remove-all, and count mutation methods.
 
-The batch child count is intentionally reported as zero until its runtime
-object layout is independently validated. The dirty-draw observer only invalidates cached quad data on an upload
-attempt; it deliberately does not count the operation as a confirmed
-successful GL upload. Do not use these counters as proof that GPU culling is
-safe to enable.
+Each wrapper is intended to forward to the original method and record passive
+telemetry or conservative cache invalidation. The exact callback signatures,
+installation ordering, and interoperability with other mods still require
+on-device validation. The former `resizeCapacity` hook is intentionally absent
+because it caused a confirmed recursive-hook crash in an earlier build.
 
-## API contract
+The child-count reader follows the target's documented metadata path:
+`CCSpriteBatchNode +0xd0 -> CCArray object; CCArray +0x38 -> _ccArray data;
+_ccArray +0x00 -> element count`. Host tests cover this pointer-chain layout
+using synthetic memory. The reader does not traverse child objects.
 
-Create and initialize a Bismuth instance as usual, then call
-`bismuth_install_cocos_hooks(handle, error, error_capacity)` only after
-`libcocos2dcpp.so` has loaded and before the hooked render path starts
-executing. Installation is opt-in; loading `libbismuth.so` alone does not
-install hooks.
+## Installation contract
 
-When loaded through the repository APK injector, `JNI_OnLoad` attempts to install
-the passive Cocos hook set automatically because the injector places Bismuth
-immediately after `System.loadLibrary("cocos2dcpp")`. Query `bismuth_auto_hook_status()`
-and `bismuth_auto_hook_error()` to see whether exact-binary validation and
-installation succeeded. A version mismatch is non-fatal to game startup.
+The native API's installation routine is intended only for a controlled host
+that can guarantee the exact target library is loaded and the relevant render
+methods are not executing while Dobby patches them. The current Geode package
+does not meet that guarantee, so it deliberately does not call
+`bismuth_install_cocos_hooks`.
 
-All installed Cocos method hooks remain pass-through observers. An additional
-GLES `glDrawElements` interception provides an **experimental, opt-in** bridge:
-when explicitly enabled through `bismuth_set_gpu_draw_bridge_enabled(1)`, and
-only while the exact atlas `drawNumberOfQuads(count, start)` call is active,
-it attempts to dispatch Bismuth's compute pipeline and submit the generated
-16-bit EBO with `glDrawElementsIndirect`. It saves and restores the current
-element-buffer and indirect-buffer bindings. If validation, initialization,
-upload, or dispatch fails, it calls the original `glDrawElements` unchanged.
-
-The bridge is disabled by default. A host integration or diagnostic loader
-must explicitly call `bismuth_set_gpu_draw_bridge_enabled(1)` after successful
-hook installation to activate it; call the same API with `0` to return to the
-original draw path. The exported query
-`bismuth_is_gpu_draw_bridge_enabled()` reports the toggle state.
-
-The first bridge intentionally marks every submitted atlas quad visible using
-finite full-range bounds. It verifies the generated EBO/indirect command and
-preserves atlas slot order, but it does **not** cull sprites, remove the CPU
-child-transform traversal, or claim a performance improvement. It is disabled
-by default and must remain off until tested on the exact device/game build.
-The original draw call is the fail-closed fallback.
-
-`bismuth_destroy` detaches telemetry safely. The pass-through trampolines
-remain installed for process lifetime rather than unpatching executable code
-while game threads may be running.
+The native GPU draw bridge is also experimental and remains disabled. It must
+not replace the game's draw call until the complete render state, VAO/EBO
+ownership, synchronization, painter order, and fallback behavior have been
+validated on the target device.
 
 ## Remaining validation
 
-- Build/CI must pass with the pinned Dobby dependency.
-- Confirm dirty VBO upload behavior and callback execution on-device.
-- Install in the actual game process and verify the expected build-ID check.
-- Confirm callbacks execute on the render thread and that counters increase.
-- The insert/remove/move/count mutation signatures were checked against the
-  target ARM64 disassembly; runtime callback execution still requires testing.
-- Calibrate sprite bounds against the actual camera/view coordinate space.
-- Replace the all-visible bridge candidates with observed quad bounds and a
-  verified view rectangle before enabling real GPU culling.
+- Establish a safe pre-render installation point before reactivating any hooks.
+- Verify every function signature and Dobby trampoline against the exact binary.
+- Test coexistence with node-ids, QOLMod, Better Visuals, and other Cocos hook users.
+- Confirm all callbacks execute on the render thread and observer lifetime is safe.
+- Validate the atlas child-array metadata reader against runtime objects.
+- Calibrate sprite bounds against camera/view coordinates before any culling.
 - Preserve the original draw path until alpha, clipping, blend, painter order,
   and device performance are validated.
 
