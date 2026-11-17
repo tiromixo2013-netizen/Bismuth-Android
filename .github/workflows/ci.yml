@@ -49,7 +49,10 @@ jobs:
       - name: Build Android ARM64 shared library
         run: cmake --build build-android --parallel
       - name: Verify embedded shader matches source validation logic
-        run: grep -Fq 'bool valid = all(not(isnan(b)))' build-android/generated/embedded_shaders.hpp
+        run: |
+          grep -Fq 'bool validBounds = all(not(isnan(b)))' build-android/generated/embedded_shaders.hpp
+          grep -Fq 'bool validView = all(not(isnan(uView)))' build-android/generated/embedded_shaders.hpp
+          grep -Fq 'visible = uint(!validBounds || !validView || overlaps)' build-android/generated/embedded_shaders.hpp
       - name: Verify ARM64 ELF and exported C API
         run: |
           file build-android/libbismuth.so

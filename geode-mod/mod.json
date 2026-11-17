@@ -5,15 +5,42 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "developer": "Bismuth Project",
   "description": "Android ARM64 settings UI and experimental rendering research for Geometry Dash 2.2081.",
-  "tags": ["performance", "utility"],
+  "tags": [
+    "performance",
+    "utility"
+  ],
   "settings": {
     "diagnostics": {
       "type": "bool",
       "name": "Diagnostic logging",
       "description": "Write Bismuth safe-mode initialization information to the Geode log.",
+      "default": true
+    },
+    "hud-enabled": {
+      "type": "bool",
+      "name": "Live performance HUD",
+      "description": "Show a compact top-left in-game HUD. Values are limited to metrics actually measured by this package.",
+      "default": true
+    },
+    "hud-advanced": {
+      "type": "bool",
+      "name": "Advanced monitor",
+      "description": "Show frame interval percentiles, estimated 1% low, CPU update time, hitch count, and sample count.",
+      "default": false
+    },
+    "hud-graph": {
+      "type": "bool",
+      "name": "Frame cadence graph",
+      "description": "Show a compact rolling 24-sample frame-cadence graph in Advanced Monitor.",
+      "default": true
+    },
+    "hud-memory": {
+      "type": "bool",
+      "name": "Process memory (RSS)",
+      "description": "Show resident process memory from /proc/self/statm. This is total process RSS, not native-heap-only memory.",
       "default": true
     }
   }

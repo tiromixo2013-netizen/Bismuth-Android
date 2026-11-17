@@ -8,7 +8,8 @@ Bismuth Android is packaged as a Geode mod for Geometry Dash 2.2081 ARM64.
 - The same button is added to the left side of Editor Pause.
 - It is placed below the upper-left mod-button area to avoid overlapping Better Visuals.
 - Pressing it opens the Geode settings popup. Closing that popup returns to the same pause layer.
-- No floating in-game overlay is created.
+- The live telemetry HUD appears at the upper-left of gameplay when enabled.
+- Advanced Monitor and its rolling frame-cadence graph can be enabled in Bismuth settings.
 
 ## Current safety state
 
@@ -18,15 +19,30 @@ Bismuth Android is packaged as a Geode mod for Geometry Dash 2.2081 ARM64.
 - Native hook and GPU-timing code remains experimental and is not activated by this Geode package.
 - The experimental all-visible GPU EBO bridge remains disabled and is not real sprite culling.
 
+## Crash-safety note
+
+The earlier crash report documented a SIGSEGV in `libc memcpy` reached from
+`CCSpriteBatchNode::appendChild` while `CCLabelBMFont` was constructing
+level-page text. `node-ids` and `QOLMod` appeared in the stack, but that trace
+did not prove a unique culprit. The in-game HUD therefore uses a standalone
+`CCLabelTTF` instead of creating another BMFont sprite-child batch. Its text
+refresh is throttled to 4 Hz to avoid rebuilding label textures every game
+update. This is a risk-reduction measure, not proof that the original crash is
+fixed; the original stack and level-page reproduction still need verification.
+
 ## Build
 
 The repository workflow builds the Android64 .geode artifact using the Geode SDK. Install that artifact through Geode.
 
 The first device test should use one repeatable level and verify:
 1. the mod loads without a Geode crash report;
-2. the icon appears in gameplay Pause;
-3. the icon appears in Editor Pause;
-4. opening and closing settings returns to the same pause screen;
-5. opening level selection and scrolling pages does not crash.
+2. the HUD appears and can be disabled;
+3. the Advanced Monitor and graph settings work;
+4. the icon appears in gameplay Pause and Editor Pause;
+5. opening and closing settings returns to the same pause screen;
+6. opening level selection and scrolling pages does not crash.
 
-No FPS gain, live telemetry, or GPU-culling activation is claimed in safe mode.
+The HUD currently measures game-loop update cadence and the wall-clock duration
+of `PlayLayer::update`. It does not measure display-present FPS, GPU usage,
+whole-frame GPU time, RAM usage, or draw calls. No performance gain is claimed
+without on-device A/B testing.

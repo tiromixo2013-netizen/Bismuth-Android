@@ -311,11 +311,8 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         if (error) *error = message;
         return false;
     };
-    if (!std::isfinite(view.left) || !std::isfinite(view.bottom) ||
-        !std::isfinite(view.right) || !std::isfinite(view.top) ||
-        view.left > view.right || view.bottom > view.top) {
-        return failClosed("View rectangle must contain finite, non-inverted bounds");
-    }
+    // Pass the original view through to the shader. The classify stage
+    // treats a malformed view as "keep all", avoiding false-negative culling.
     if (count == 0) {
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);

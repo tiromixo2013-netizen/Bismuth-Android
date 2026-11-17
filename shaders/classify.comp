@@ -17,8 +17,14 @@ void main() {
     uint visible = 0u;
     if (i < uCount) {
         vec4 b = items[i].bounds;
-        bool valid = all(not(isnan(b))) && all(not(isinf(b))) && b.x <= b.z && b.y <= b.w;
-        visible = uint(valid && b.z >= uView.x && b.x <= uView.z && b.w >= uView.y && b.y <= uView.w);
+        bool validBounds = all(not(isnan(b))) && all(not(isinf(b))) && b.x <= b.z && b.y <= b.w;
+        bool validView = all(not(isnan(uView))) && all(not(isinf(uView))) &&
+                         uView.x <= uView.z && uView.y <= uView.w;
+        // A malformed camera rectangle or candidate is never grounds for
+        // dropping geometry. Keep it visible and let the original renderer clip.
+        bool overlaps = b.z >= uView.x && b.x <= uView.z &&
+                        b.w >= uView.y && b.y <= uView.w;
+        visible = uint(!validBounds || !validView || overlaps);
         flags[i] = visible;
     }
     scan[lane] = visible;

@@ -4,7 +4,7 @@ Android ARM64 Geode mod for Geometry Dash 2.2081, with a native GLES 3.1 rendere
 
 The project explores GPU-assisted sprite classification, stable visible-index compaction, and indirect-draw preparation. It is a clean-room implementation of general rendering concepts; it does not copy Bismuth PC source code.
 
-> **Current Geode status: safe-mode package.** The pause-menu settings UI is active, but Cocos2d hooks, live renderer telemetry, GPU timing, and the experimental draw bridge are not activated by the Geode package. No Android device performance gain is claimed.
+> **Current Geode status: safe-mode package.** Pause-menu settings and a lightweight gameplay HUD are active. Native Cocos hooks, GPU timing, and the experimental draw bridge remain disabled in the Geode package. The HUD reports game-loop cadence and PlayLayer CPU wall time only; no Android device performance gain is claimed.
 
 ## What exists
 
@@ -14,6 +14,7 @@ The project explores GPU-assisted sprite classification, stable visible-index co
 - Embedded GPU shaders generated from `shaders/*.comp` during CMake configuration.
 - Host-side unit tests and GitHub Actions CI.
 - Geode Android64 pause-menu settings entry for gameplay and editor pause screens.
+- Compact live HUD with optional Advanced Monitor, rolling frame-cadence graph, p50/p95/p99 intervals, estimated 1% low, and hitch counter.
 
 ## Build host reference tests
 
@@ -41,7 +42,7 @@ See [docs/renderer-integration.md](docs/renderer-integration.md) for the require
 ## Geode Android64 package
 
 The installable package lives in [geode-mod](geode-mod/README.md) and is built by
-[the Geode Android64 workflow](.github/workflows/geode-android64.yml). It is intended to be installed through Geode without APK patching, resigning, or root access. The current package adds settings access to both gameplay Pause and Editor Pause while leaving the original renderer untouched.
+[the Geode Android64 workflow](.github/workflows/geode-android64.yml). It is intended to be installed through Geode without APK patching, resigning, or root access. The current package adds settings access to both gameplay Pause and Editor Pause, plus an optional top-left gameplay HUD, while leaving the original renderer untouched.
 
 ## Inspect the exact target game library
 
