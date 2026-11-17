@@ -5,9 +5,9 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.9.3",
+  "version": "0.9.5",
   "developer": "Bismuth Project",
-  "description": "Android ARM64 in-game performance monitor for Geometry Dash 2.2081, with conservative safe-mode renderer diagnostics.",
+  "description": "Android ARM64 in-game performance monitor with frame analysis, process CPU, best-effort devfreq GPU, thermal and renderer telemetry.",
   "tags": [
     "performance",
     "utility"
@@ -22,25 +22,49 @@
     "hud-enabled": {
       "type": "bool",
       "name": "Live performance HUD",
-      "description": "Show the top-left in-game monitor. Metrics are limited to values measured by this package.",
+      "description": "Show the in-game top-left monitor with game-loop FPS, frame time, optional CPU/GPU usage and temperature, advanced frame percentiles, memory, and renderer CPU-submission counters.",
       "default": true
     },
     "hud-advanced": {
       "type": "bool",
-      "name": "Advanced monitor",
-      "description": "Show frame-interval percentiles, estimated 1% low, CPU update wall time, hitch count, and sample count.",
+      "name": "Advanced frame analysis",
+      "description": "Show frame P50/P95/P99, estimated 1% low, PlayLayer update CPU wall time P50/P95/P99, hitch count, and sample count. This is game-loop timing, not display-present FPS.",
       "default": true
     },
     "hud-graph": {
       "type": "bool",
       "name": "Frame cadence graph",
-      "description": "Show the rolling 24-sample frame-cadence graph in Advanced Monitor.",
+      "description": "Show a rolling 24-sample frame cadence graph in Advanced Frame Analysis.",
+      "default": true
+    },
+    "monitor-cpu": {
+      "type": "bool",
+      "name": "Measure game CPU usage",
+      "description": "Sample this game's process CPU time from /proc/self/stat. The percentage is normalized across online CPU cores.",
+      "default": true
+    },
+    "monitor-gpu": {
+      "type": "bool",
+      "name": "Measure GPU usage",
+      "description": "Try cumulative GPU busy/total counters exposed by the Android devfreq driver (including supported Mali drivers). Shows N/A when the kernel does not expose readable counters.",
+      "default": true
+    },
+    "monitor-thermal": {
+      "type": "bool",
+      "name": "Measure CPU/GPU temperature",
+      "description": "Search readable thermal-zone type names for CPU and GPU sensors. OEM sensor labels vary; unavailable readings show N/A.",
       "default": true
     },
     "hud-memory": {
       "type": "bool",
       "name": "Process memory (RSS)",
       "description": "Show resident memory for the whole game process from /proc/self/statm; this is not native-heap-only memory.",
+      "default": true
+    },
+    "renderer-telemetry": {
+      "type": "bool",
+      "name": "SpriteBatch renderer telemetry",
+      "description": "Count real CCSpriteBatchNode draw invocations and child nodes and measure CPU time spent in each batch draw call. This is CPU submission time, not GPU execution time.",
       "default": true
     }
   }
