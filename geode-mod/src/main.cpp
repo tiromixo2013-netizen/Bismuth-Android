@@ -168,27 +168,27 @@ void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::
     if (g_hudRefreshAccumulator < 0.25f) return;
     g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 0.25f);
 
-    const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
-    const float updateHz = frameMs > 0.f ? 1000.f / frameMs : 0.f;
+    const float updateIntervalMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
+    const float updateHz = updateIntervalMs > 0.f ? 1000.f / updateIntervalMs : 0.f;
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
-    char text[768];
     const std::string rssStorage = processRssMb >= 0.0
         ? std::to_string(processRssMb) + " MB" : "N/A";
     const char* rssText = rssStorage.c_str();
+    char text[768];
+
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
             const auto graph = makeFrameGraph();
             std::snprintf(text, sizeof(text),
-                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
-                "PlayLayer::update CPU: %.3f ms\n"
-                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
-                "Cadence: %s\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Atlas draw calls: %llu | Atlas draw CPU: %.3f ms\\n"
-                "Atlas draw calls: %llu | Atlas draw CPU: %.3f ms\\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
+                "PlayLayer::update CPU: %.3f ms\\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
+                "Cadence: %s\\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
+                "Atlas draw calls: %llu | draw CPU: %.3f ms\\n"
                 "Process RSS: %s",
-                updateHz, frameMs, updateCpuMs,
+                updateHz, updateIntervalMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
                 graph.c_str(), g_hitchCount, g_frameIntervalCount,
@@ -196,13 +196,14 @@ void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::
                 static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
         } else {
             std::snprintf(text, sizeof(text),
-                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
-                "PlayLayer::update CPU: %.3f ms\n"
-                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
+                "PlayLayer::update CPU: %.3f ms\\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
+                "Atlas draw calls: %llu | draw CPU: %.3f ms\\n"
                 "Process RSS: %s",
-                updateHz, frameMs, updateCpuMs,
+                updateHz, updateIntervalMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
                 g_hitchCount, g_frameIntervalCount,
@@ -211,15 +212,14 @@ void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::
         }
     } else {
         std::snprintf(text, sizeof(text),
-            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
             "PlayLayer::update CPU: %.3f ms\\n"
             "Atlas draws: %llu | draw CPU: %.3f ms | RSS %s",
-            updateHz, frameMs, updateCpuMs,
+            updateHz, updateIntervalMs, updateCpuMs,
             static_cast<unsigned long long>(atlasDrawCalls),
             static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
     }
     g_bismuthHud->setString(text);
-}
 }
 
 class $modify(BismuthPlayLayer, PlayLayer) {
