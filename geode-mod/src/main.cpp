@@ -2,6 +2,7 @@
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/CCTextureAtlas.hpp>
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,10 @@ std::size_t g_frameIntervalCount = 0;
 std::size_t g_frameIntervalCursor = 0;
 std::size_t g_updateCount = 0;
 std::size_t g_hitchCount = 0;
+std::uint64_t g_atlasDrawCalls = 0;
+std::uint64_t g_atlasDrawCpuNs = 0;
+std::uint64_t g_lastAtlasDrawCalls = 0;
+std::uint64_t g_lastAtlasDrawCpuNs = 0;
 float g_hudRefreshAccumulator = 0.f;
 float g_cachedP50Ms = 0.f;
 float g_cachedP95Ms = 0.f;
@@ -139,15 +144,13 @@ void syncHud(CCNode* layer) {
     if (!g_bismuthHud) createHud(layer);
 }
 
-void updateHud(float dt, double updateCpuMs) {
+void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::uint64_t atlasDrawCpuNs) {
     if (!g_bismuthHud) return;
-
     if (std::isfinite(updateCpuMs) && updateCpuMs >= 0.0 && updateCpuMs < 10000.0) {
         g_cpuUpdateMs[g_cpuSampleCursor] = updateCpuMs;
         g_cpuSampleCursor = (g_cpuSampleCursor + 1) % g_cpuUpdateMs.size();
         g_cpuSampleCount = std::min(g_cpuSampleCount + 1, g_cpuUpdateMs.size());
     }
-
     if (std::isfinite(dt) && dt > 0.f && dt < 10.f) {
         const float frameMs = dt * 1000.f;
         g_frameIntervalsMs[g_frameIntervalCursor] = frameMs;
@@ -157,58 +160,61 @@ void updateHud(float dt, double updateCpuMs) {
         ++g_updateCount;
         if ((g_updateCount % 12u) == 0u) refreshPercentiles();
     }
-
-    // Avoid rebuilding TTF textures on every game update; refresh at 4 Hz.
     g_hudRefreshAccumulator += std::max(0.f, dt);
     if (g_hudRefreshAccumulator < 0.25f) return;
     g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 0.25f);
 
-    const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
-    const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
-    const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
-
+    const float updateIntervalMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
+    const float updateHz = updateIntervalMs > 0.f ? 1000.f / updateIntervalMs : 0.f;
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
+    const std::string rssStorage = processRssMb >= 0.0 ? std::to_string(processRssMb) + " MB" : "N/A";
+    const char* rssText = rssStorage.c_str();
     char text[768];
+
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
             const auto graph = makeFrameGraph();
             std::snprintf(text, sizeof(text),
-                "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
-                "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
-                "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+                "PlayLayer::update CPU: %.3f ms\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
                 "Cadence: %s\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Process RSS: %s | GPU usage/time: N/A\n"
-                "Draw calls: N/A",
-                loopFps, frameMs, lowFpsEstimate, updateCpuMs,
+                "Atlas draw calls: %llu | draw CPU: %.3f ms\n"
+                "Process RSS: %s",
+                updateHz, updateIntervalMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
                 graph.c_str(), g_hitchCount, g_frameIntervalCount,
-                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
+                static_cast<unsigned long long>(atlasDrawCalls),
+                static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
         } else {
             std::snprintf(text, sizeof(text),
-                "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
-                "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
-                "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+                "PlayLayer::update CPU: %.3f ms\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Process RSS: %s | GPU usage/time: N/A | Draw calls: N/A",
-                loopFps, frameMs, lowFpsEstimate, updateCpuMs,
+                "Atlas draw calls: %llu | draw CPU: %.3f ms\n"
+                "Process RSS: %s",
+                updateHz, updateIntervalMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
                 g_hitchCount, g_frameIntervalCount,
-                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
+                static_cast<unsigned long long>(atlasDrawCalls),
+                static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
         }
     } else {
         std::snprintf(text, sizeof(text),
-            "BISMUTH | LOOP %.1f FPS | %.2f ms\n"
-            "1%% LOW* %.1f | CPU update %.3f ms | RSS %s",
-            loopFps, frameMs, lowFpsEstimate, updateCpuMs,
-            processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
+            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+            "PlayLayer::update CPU: %.3f ms\n"
+            "Atlas draws: %llu | draw CPU: %.3f ms | RSS %s",
+            updateHz, updateIntervalMs, updateCpuMs,
+            static_cast<unsigned long long>(atlasDrawCalls),
+            static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
     }
     g_bismuthHud->setString(text);
-}
 }
 
 class $modify(BismuthPlayLayer, PlayLayer) {
@@ -223,23 +229,40 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_frameIntervalCursor = 0;
         g_updateCount = 0;
         g_hitchCount = 0;
+        g_atlasDrawCalls = g_atlasDrawCpuNs = 0;
+        g_lastAtlasDrawCalls = g_lastAtlasDrawCpuNs = 0;
         g_hudRefreshAccumulator = 0.f;
         g_cachedP50Ms = g_cachedP95Ms = g_cachedP99Ms = 0.f;
         createHud(this);
     }
 
     void update(float dt) {
+        g_lastAtlasDrawCalls = g_atlasDrawCalls;
+        g_lastAtlasDrawCpuNs = g_atlasDrawCpuNs;
+        g_atlasDrawCalls = 0;
+        g_atlasDrawCpuNs = 0;
         const auto start = std::chrono::steady_clock::now();
         PlayLayer::update(dt);
         const auto end = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
         syncHud(this);
-        updateHud(dt, elapsed);
+        updateHud(dt, elapsed, g_lastAtlasDrawCalls, g_lastAtlasDrawCpuNs);
     }
 
     void onExit() {
         g_bismuthHud = nullptr;
         PlayLayer::onExit();
+    }
+};
+
+class $modify(BismuthTextureAtlas, CCTextureAtlas) {
+    void drawNumberOfQuads(unsigned int numberOfQuads, unsigned int start) {
+        const auto begin = std::chrono::steady_clock::now();
+        CCTextureAtlas::drawNumberOfQuads(numberOfQuads, start);
+        const auto end = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count();
+        ++g_atlasDrawCalls;
+        if (elapsed > 0) g_atlasDrawCpuNs += static_cast<std::uint64_t>(elapsed);
     }
 };
 
