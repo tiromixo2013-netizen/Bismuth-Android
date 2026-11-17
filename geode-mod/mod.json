@@ -36,6 +36,12 @@
       "name": "Frame cadence graph",
       "description": "Show a compact rolling 24-sample frame-cadence graph in Advanced Monitor.",
       "default": true
+    },
+    "hud-memory": {
+      "type": "bool",
+      "name": "Process memory (RSS)",
+      "description": "Show resident process memory from /proc/self/statm. This is total process RSS, not native-heap-only memory.",
+      "default": true
     }
   }
 }
