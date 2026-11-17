@@ -15,7 +15,7 @@ Bismuth Android is packaged as a Geode mod for Geometry Dash 2.2081 ARM64.
 
 - The Geode package runs in safe mode: it does not install Cocos2d/Dobby hooks from the Geode Loaded event.
 - This avoids patching renderer methods after the game render path may already be active or while other mods own hooks on those methods.
-- The original Cocos renderer remains untouched.
+- The original Cocos draw implementation is called unchanged; the Geode hook only measures around the call and does not replace draw data or alter visibility.
 - The Geode package now uses a narrow Geode-managed `CCTextureAtlas::drawNumberOfQuads` hook to count actual atlas draw submissions and measure their CPU wall time. It calls the original renderer method unchanged.
 - Dobby-based native hooks and GPU timer queries remain experimental and are not activated by this Geode package.
 - The experimental all-visible GPU EBO bridge remains disabled; it is not sprite culling and is not exposed as an enabled feature.
