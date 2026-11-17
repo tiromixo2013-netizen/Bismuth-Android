@@ -112,20 +112,23 @@ std::string makeFrameGraph() {
     return graph;
 }
 
-void createHud(CCNode* layer) {
-    g_bismuthHud = nullptr;
+void createHud() {
     if (!Mod::get()->getSettingValue<bool>("hud-enabled")) return;
+    auto* layer = CCDirector::sharedDirector()->getRunningScene();
+    if (!layer) {
+        log::warn("Bismuth: running scene unavailable; HUD creation deferred.");
+        return;
+    }
 
-    // Use a standalone TTF label rather than BMFont: the recorded crash involved
-    // CCLabelBMFont building sprite children through CCSpriteBatchNode::appendChild.
-    auto label = CCLabelTTF::create("BISMUTH | collecting samples", "Arial", 10.f);
+    // Use TTF rather than BMFont to avoid the previously observed BMFont batch-child crash path.
+    auto label = CCLabelTTF::create("BISMUTH | waiting for gameplay samples", "Arial", 10.f);
     if (!label) {
         log::warn("Bismuth: could not create the standalone telemetry label.");
         return;
     }
 
     label->setAnchorPoint({0.f, 1.f});
-    label->setOpacity(225);
+    label->setOpacity(235);
     label->setColor({220, 240, 255});
     const auto size = CCDirector::sharedDirector()->getWinSize();
     label->setPosition({8.f, size.height - 8.f});
@@ -145,7 +148,15 @@ void syncHud() {
         }
         return;
     }
-    if (!g_bismuthHud) createHud();\n    else if (g_bismuthHud->getParent() != CCDirector::sharedDirector()->getRunningScene()) {\n        auto* oldHud = g_bismuthHud;\n        g_bismuthHud = nullptr;\n        oldHud->removeFromParentAndCleanup(true);\n        createHud();\n    }
+    auto* runningScene = CCDirector::sharedDirector()->getRunningScene();
+    if (!g_bismuthHud) {
+        createHud();
+    } else if (runningScene && g_bismuthHud->getParent() != runningScene) {
+        auto* oldHud = g_bismuthHud;
+        g_bismuthHud = nullptr;
+        oldHud->removeFromParentAndCleanup(true);
+        createHud();
+    }
 }
 
 void updateHud(float dt, double updateCpuMs) {
@@ -176,7 +187,8 @@ void updateHud(float dt, double updateCpuMs) {
     const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
     const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
 
-    const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;\n    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
+    const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
+    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;\n    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
     char text[768];
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
@@ -188,12 +200,15 @@ void updateHud(float dt, double updateCpuMs) {
                 "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
                 "Cadence: %s\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Process RSS: %s | GPU usage/time: N/A\n"
-                "Draw calls: N/A",
+                "Sprite batches: %llu | children: %llu\n"
+                "Batch CPU: %.3f ms | GPU: N/A | GL calls: N/A\n"
+                "Process RSS: %s",
                 loopFps, frameMs, lowFpsEstimate, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
                 graph.c_str(), g_hitchCount, g_frameIntervalCount,
+                static_cast<unsigned long long>(g_batchDrawCallsLast),
+                static_cast<unsigned long long>(g_batchChildrenLast), batchCpuMs,
                 processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
         } else {
             std::snprintf(text, sizeof(text),
@@ -202,11 +217,14 @@ void updateHud(float dt, double updateCpuMs) {
                 "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
                 "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Process RSS: %s | GPU usage/time: N/A | Draw calls: N/A",
+                "Sprite batches: %llu | children: %llu | batch CPU %.3f ms\n"
+                "GPU time: N/A | GL calls: N/A | RSS: %s",
                 loopFps, frameMs, lowFpsEstimate, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
                 g_hitchCount, g_frameIntervalCount,
+                static_cast<unsigned long long>(g_batchDrawCallsLast),
+                static_cast<unsigned long long>(g_batchChildrenLast), batchCpuMs,
                 processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
         }
     } else {
@@ -234,20 +252,37 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_hitchCount = 0;
         g_hudRefreshAccumulator = 0.f;
         g_cachedP50Ms = g_cachedP95Ms = g_cachedP99Ms = 0.f;
-        createHud(this);
+        g_batchDrawCallsCurrent.store(0, std::memory_order_relaxed);
+        g_batchChildrenCurrent.store(0, std::memory_order_relaxed);
+        g_batchCpuNsCurrent.store(0, std::memory_order_relaxed);
+        g_batchDrawCallsLast = g_batchChildrenLast = g_batchCpuNsLast = 0;
+        g_loggedFirstPlayUpdate = false;
+        createHud();
+        log::info("Bismuth: PlayLayer entered; gameplay telemetry hook is active.");
     }
 
     void update(float dt) {
+        g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
+        g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
+        g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
         const auto start = std::chrono::steady_clock::now();
         PlayLayer::update(dt);
         const auto end = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
-        syncHud(this);
+        syncHud();
+        if (!g_loggedFirstPlayUpdate) {
+            g_loggedFirstPlayUpdate = true;
+            log::info("Bismuth: first PlayLayer::update received (dt={:.4f}s).", dt);
+        }
         updateHud(dt, elapsed);
     }
 
     void onExit() {
-        g_bismuthHud = nullptr;
+        if (g_bismuthHud) {
+            auto* oldHud = g_bismuthHud;
+            g_bismuthHud = nullptr;
+            oldHud->removeFromParentAndCleanup(true);
+        }
         PlayLayer::onExit();
     }
 };
