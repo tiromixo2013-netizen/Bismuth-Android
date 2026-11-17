@@ -17,6 +17,13 @@
 #include <sstream>
 #include <string>
 #include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#include <cstdlib>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 using namespace geode::prelude;
 
@@ -42,7 +49,91 @@ std::atomic<std::uint64_t> g_batchCpuNsCurrent{0};
 std::uint64_t g_batchDrawCallsLast = 0;
 std::uint64_t g_batchChildrenLast = 0;
 std::uint64_t g_batchCpuNsLast = 0;
+
 bool g_loggedFirstPlayUpdate = false;
+
+struct ShizukuSnapshot {
+    double deviceCpu = -1.0, gpu = -1.0, cpuTemp = -1.0, gpuTemp = -1.0;
+    double ramUsedMb = -1.0, ramTotalMb = -1.0;
+};
+ShizukuSnapshot g_shizukuSnapshot;
+int g_shizukuSocket = -1;
+bool g_shizukuConnecting = false;
+std::string g_shizukuRx;
+auto g_shizukuNextPoll = std::chrono::steady_clock::time_point{};
+
+void closeShizukuSocket() {
+    if (g_shizukuSocket >= 0) ::close(g_shizukuSocket);
+    g_shizukuSocket = -1;
+    g_shizukuConnecting = false;
+    g_shizukuRx.clear();
+}
+
+void parseShizukuLine(const std::string& line) {
+    std::istringstream in(line);
+    std::array<double, 6> values{};
+    for (auto& value : values) {
+        std::string field;
+        if (!std::getline(in, field, ',')) return;
+        try { value = std::stod(field); } catch (...) { return; }
+    }
+    g_shizukuSnapshot.deviceCpu = values[0];
+    g_shizukuSnapshot.gpu = values[1];
+    g_shizukuSnapshot.cpuTemp = values[2];
+    g_shizukuSnapshot.gpuTemp = values[3];
+    g_shizukuSnapshot.ramUsedMb = values[4];
+    g_shizukuSnapshot.ramTotalMb = values[5];
+}
+
+void pollShizukuBridge() {
+    if (!Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (now < g_shizukuNextPoll) return;
+    g_shizukuNextPoll = now + std::chrono::milliseconds(250);
+
+    if (g_shizukuSocket < 0) {
+        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) return;
+        const int flags = ::fcntl(fd, F_GETFL, 0);
+        ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(38471);
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        const int result = ::connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+        if (result < 0 && errno != EINPROGRESS) { ::close(fd); return; }
+        g_shizukuSocket = fd;
+        g_shizukuConnecting = result < 0;
+    }
+
+    if (g_shizukuConnecting) {
+        pollfd pfd{g_shizukuSocket, POLLOUT, 0};
+        if (::poll(&pfd, 1, 0) <= 0) return;
+        int error = 0; socklen_t length = sizeof(error);
+        if (::getsockopt(g_shizukuSocket, SOL_SOCKET, SO_ERROR, &error, &length) < 0 || error) {
+            closeShizukuSocket(); return;
+        }
+        g_shizukuConnecting = false;
+    }
+
+    char buffer[512];
+    for (;;) {
+        const auto count = ::recv(g_shizukuSocket, buffer, sizeof(buffer), 0);
+        if (count > 0) {
+            g_shizukuRx.append(buffer, static_cast<std::size_t>(count));
+            if (g_shizukuRx.size() > 4096) g_shizukuRx.erase(0, g_shizukuRx.size() - 2048);
+            std::size_t newline = 0;
+            while ((newline = g_shizukuRx.find('\n')) != std::string::npos) {
+                parseShizukuLine(g_shizukuRx.substr(0, newline));
+                g_shizukuRx.erase(0, newline + 1);
+            }
+            continue;
+        }
+        if (count == 0) closeShizukuSocket();
+        else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) closeShizukuSocket();
+        break;
+    }
+}
 
 double sampleProcessCpuPercent() {
     static std::uint64_t previousTicks = 0;
@@ -306,11 +397,15 @@ void updateHud(float dt, double updateCpuMs) {
     }
     const double averageFps = averageFrameMs > 0.0 ? 1000.0 / averageFrameMs : 0.0;
     const double targetFps = readEngineTargetFps();
+    pollShizukuBridge();
     const double gameCpuPercent = Mod::get()->getSettingValue<bool>("monitor-cpu") ? sampleProcessCpuPercent() : -1.0;
-    const double gpuPercent = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
+    double gpuPercent = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
     const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
-    const double cpuTempC = thermalEnabled ? readThermalZoneC("cpu") : -1.0;
-    const double gpuTempC = thermalEnabled ? readThermalZoneC("gpu") : -1.0;
+    double cpuTempC = thermalEnabled ? readThermalZoneC("cpu") : -1.0;
+    double gpuTempC = thermalEnabled ? readThermalZoneC("gpu") : -1.0;
+    if (gpuPercent < 0.0) gpuPercent = g_shizukuSnapshot.gpu;
+    if (cpuTempC < 0.0) cpuTempC = g_shizukuSnapshot.cpuTemp;
+    if (gpuTempC < 0.0) gpuTempC = g_shizukuSnapshot.gpuTemp;
 
 
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
@@ -324,7 +419,10 @@ void updateHud(float dt, double updateCpuMs) {
     out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\n";
     out.precision(2);
     out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\n";
-    if (Mod::get()->getSettingValue<bool>("monitor-cpu")) out << "GAME CPU " << (gameCpuPercent >= 0.0 ? std::to_string(gameCpuPercent) + "%" : "N/A") << " | ";
+    if (Mod::get()->getSettingValue<bool>("monitor-cpu")) {
+        out << "GAME CPU " << (gameCpuPercent >= 0.0 ? std::to_string(gameCpuPercent) + "%" : "N/A");
+        out << " | DEVICE CPU " << (g_shizukuSnapshot.deviceCpu >= 0.0 ? std::to_string(g_shizukuSnapshot.deviceCpu) + "%" : "N/A") << " | ";
+    }
     if (Mod::get()->getSettingValue<bool>("monitor-gpu")) out << "GPU " << (gpuPercent >= 0.0 ? std::to_string(gpuPercent) + "%" : "N/A");
     out << "\n";
     if (thermalEnabled) out << "CPU TEMP " << (cpuTempC >= 0.0 ? std::to_string(cpuTempC) + " C" : "N/A")
