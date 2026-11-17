@@ -434,6 +434,21 @@ per-child transform calls. No draw replacement or transform bypass is justified
 yet.
 
 
+## CPU reference path and reusable output storage
+
+The CPU reference culler now exposes `cullStableInto()` and
+`cullStablePayloadsInto()`. Callers can retain their output vectors between
+frames; after the vector has reached its high-water capacity, the culling loop
+clears and repopulates it without allocating a new output buffer. The original
+return-by-value helpers remain available and delegate to these reusable forms.
+
+Both CPU helpers preserve candidate input order. Invalid view or candidate
+bounds are retained as visible, matching the GLES classify shader's
+conservative rule. This reduces avoidable staging allocations in a future
+integration, but does not by itself remove Cocos child traversal or atlas
+uploads; no runtime speedup is claimed until connected to the verified draw
+path and measured on device.
+
 ## Conservative handling of invalid culling input
 
 The CPU reference and GLES classify shader use a conservative fail-open rule:
