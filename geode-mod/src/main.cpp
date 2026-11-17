@@ -16,6 +16,10 @@ using namespace geode::prelude;
 namespace {
 CCLabelTTF* g_bismuthHud = nullptr;
 std::array<float, 120> g_frameIntervalsMs{};
+std::array<double, 120> g_cpuUpdateMs{};
+std::size_t g_cpuSampleCount = 0;
+std::size_t g_cpuSampleCursor = 0;
+double g_cpuP50Ms = 0.0, g_cpuP95Ms = 0.0, g_cpuP99Ms = 0.0;
 std::size_t g_frameIntervalCount = 0;
 std::size_t g_frameIntervalCursor = 0;
 std::size_t g_updateCount = 0;
@@ -60,6 +64,17 @@ void refreshPercentiles() {
     g_cachedP50Ms = percentile(0.50);
     g_cachedP95Ms = percentile(0.95);
     g_cachedP99Ms = percentile(0.99);
+    if (g_cpuSampleCount) {
+        auto cpu = g_cpuUpdateMs;
+        std::sort(cpu.begin(), cpu.begin() + static_cast<std::ptrdiff_t>(g_cpuSampleCount));
+        const auto cpuPercentile = [&](double p) {
+            const auto rank = static_cast<std::size_t>(std::ceil(p * static_cast<double>(g_cpuSampleCount)));
+            return cpu[std::max<std::size_t>(1, rank) - 1];
+        };
+        g_cpuP50Ms = cpuPercentile(0.50);
+        g_cpuP95Ms = cpuPercentile(0.95);
+        g_cpuP99Ms = cpuPercentile(0.99);
+    }
 }
 
 double readProcessRssMb() {
@@ -114,6 +129,12 @@ void createHud(CCNode* layer) {
 void updateHud(float dt, double updateCpuMs) {
     if (!g_bismuthHud) return;
 
+    if (std::isfinite(updateCpuMs) && updateCpuMs >= 0.0 && updateCpuMs < 10000.0) {
+        g_cpuUpdateMs[g_cpuSampleCursor] = updateCpuMs;
+        g_cpuSampleCursor = (g_cpuSampleCursor + 1) % g_cpuUpdateMs.size();
+        g_cpuSampleCount = std::min(g_cpuSampleCount + 1, g_cpuUpdateMs.size());
+    }
+
     if (std::isfinite(dt) && dt > 0.f && dt < 10.f) {
         const float frameMs = dt * 1000.f;
         g_frameIntervalsMs[g_frameIntervalCursor] = frameMs;
@@ -142,11 +163,13 @@ void updateHud(float dt, double updateCpuMs) {
                 "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
                 "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
                 "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
+                "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
                 "Process RSS: %s | GPU usage/time: N/A\n"
                 "Draw calls: N/A",
                 loopFps, frameMs, lowFpsEstimate, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
+                g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
                 g_hitchCount, g_frameIntervalCount,
                 processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
         } else {
@@ -176,6 +199,10 @@ class $modify(BismuthPlayLayer, PlayLayer) {
     void onEnter() {
         PlayLayer::onEnter();
         g_frameIntervalsMs.fill(0.f);
+        g_cpuUpdateMs.fill(0.0);
+        g_cpuSampleCount = 0;
+        g_cpuSampleCursor = 0;
+        g_cpuP50Ms = g_cpuP95Ms = g_cpuP99Ms = 0.0;
         g_frameIntervalCount = 0;
         g_frameIntervalCursor = 0;
         g_updateCount = 0;
