@@ -488,8 +488,11 @@ void updateHud(float dt, double updateCpuMs) {
 }
 
 class $modify(BismuthPlayLayer, PlayLayer) {
-    void onEnter() {
-        PlayLayer::onEnter();
+    // PlayLayer does not declare onEnter() or update() in the 2.2081 bindings.
+    // Hook its actual lifecycle/frame callbacks instead, otherwise Geode silently
+    // omits those inherited methods and neither the HUD nor bridge ever starts.
+    void onEnterTransitionDidFinish() {
+        PlayLayer::onEnterTransitionDidFinish();
         g_frameIntervalsMs.fill(0.f);
         g_cpuUpdateMs.fill(0.0);
         g_cpuSampleCount = 0;
@@ -507,24 +510,26 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_batchDrawCallsLast = g_batchChildrenLast = g_batchCpuNsLast = 0;
         g_loggedFirstPlayUpdate = false;
         createHud(this);
-        log::info("Bismuth: PlayLayer entered; gameplay telemetry hook is active and scene HUD requested.");
+        log::info("Bismuth: PlayLayer transition finished; HUD initialized.");
     }
 
-    void update(float dt) {
+    void postUpdate(float dt) {
         g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
         g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
         g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
         const auto start = std::chrono::steady_clock::now();
-        PlayLayer::update(dt);
+        PlayLayer::postUpdate(dt);
         const auto end = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
-        // Keep telemetry transport independent from HUD creation/rendering.
-        // If label creation fails, the bridge must still connect and receive samples.
+
+        // Keep transport independent from HUD creation/rendering. The bridge is
+        // polled even if the HUD setting is disabled or label creation fails.
         pollShizukuBridge();
         syncHud(this);
         if (!g_loggedFirstPlayUpdate) {
             g_loggedFirstPlayUpdate = true;
-            log::info("Bismuth: first PlayLayer::update received (dt={:.4f}s, hud={}).", dt, static_cast<void*>(g_bismuthHud));
+            log::info("Bismuth: first PlayLayer::postUpdate received (dt={:.4f}s, hud={}).",
+                dt, static_cast<void*>(g_bismuthHud));
         }
         updateHud(dt, elapsed);
     }
@@ -536,6 +541,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
             g_lastHudText.clear();
             oldHud->removeFromParentAndCleanup(true);
         }
+        closeShizukuSocket();
         PlayLayer::onExit();
     }
 };
@@ -583,7 +589,7 @@ class $modify(BismuthEditorPauseLayer, EditorPauseLayer) {
 
 $on_mod(Loaded) {
     // Register safe Geode-level telemetry hooks; no draw replacement or GPU culling is enabled.
-    log::info("Bismuth: Geode mod loaded; PlayLayer and CCSpriteBatchNode telemetry hooks are registered.");
+    log::info("Bismuth: Geode mod loaded; PlayLayer lifecycle/postUpdate and CCSpriteBatchNode telemetry hooks are registered.");
     if (Mod::get()->getSettingValue<bool>("diagnostics")) {
         log::info("Bismuth diagnostics: HUD reports PlayLayer cadence, CPU update time, SpriteBatch draw invocations/children and batch CPU submission time. GPU execution time and raw GL draw calls are not measured.");
     }
