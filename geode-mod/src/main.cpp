@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <unistd.h>
 
 using namespace geode::prelude;
 
@@ -59,6 +60,20 @@ void refreshPercentiles() {
     g_cachedP50Ms = percentile(0.50);
     g_cachedP95Ms = percentile(0.95);
     g_cachedP99Ms = percentile(0.99);
+}
+
+double readProcessRssMb() {
+    // Linux /proc/self/statm reports resident pages for this process.
+    // This is process RSS, not native-heap-only memory.
+    FILE* statm = std::fopen("/proc/self/statm", "r");
+    if (!statm) return -1.0;
+    long totalPages = 0;
+    long residentPages = 0;
+    const int parsed = std::fscanf(statm, "%ld %ld", &totalPages, &residentPages);
+    std::fclose(statm);
+    const long pageSize = ::sysconf(_SC_PAGESIZE);
+    if (parsed != 2 || residentPages < 0 || pageSize <= 0) return -1.0;
+    return (static_cast<double>(residentPages) * static_cast<double>(pageSize)) / (1024.0 * 1024.0);
 }
 
 std::string makeFrameGraph() {
@@ -118,6 +133,7 @@ void updateHud(float dt, double updateCpuMs) {
     const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
     const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
 
+    const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
     char text[768];
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
@@ -127,27 +143,30 @@ void updateHud(float dt, double updateCpuMs) {
                 "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
                 "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Frame cadence: %s\n"
-                "GPU usage/time: N/A | Draw calls: N/A",
+                "Process RSS: %s | GPU usage/time: N/A\n"
+                "Draw calls: N/A",
                 loopFps, frameMs, lowFpsEstimate, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
-                g_hitchCount, g_frameIntervalCount, graph.c_str());
+                g_hitchCount, g_frameIntervalCount,
+                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
         } else {
             std::snprintf(text, sizeof(text),
                 "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
                 "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
                 "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "GPU usage/time: N/A | Draw calls: N/A",
+                "Process RSS: %s | GPU usage/time: N/A | Draw calls: N/A",
                 loopFps, frameMs, lowFpsEstimate, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
-                g_hitchCount, g_frameIntervalCount);
+                g_hitchCount, g_frameIntervalCount,
+                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
         }
     } else {
         std::snprintf(text, sizeof(text),
             "BISMUTH | LOOP %.1f FPS | %.2f ms\n"
-            "1%% LOW* %.1f | CPU update %.3f ms",
-            loopFps, frameMs, lowFpsEstimate, updateCpuMs);
+            "1%% LOW* %.1f | CPU update %.3f ms | RSS %s",
+            loopFps, frameMs, lowFpsEstimate, updateCpuMs,
+            processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
     }
     g_bismuthHud->setString(text);
 }
