@@ -174,12 +174,12 @@ void updateHud(float dt, double updateCpuMs) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
             const auto graph = makeFrameGraph();
             std::snprintf(text, sizeof(text),
-                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
-                "PlayLayer::update CPU: %.3f ms\\n"
-                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
-                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
-                "Cadence: %s\\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+                "PlayLayer::update CPU: %.3f ms\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
+                "Cadence: %s\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
                 "Process RSS: %s",
                 updateHz, frameMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
@@ -187,11 +187,11 @@ void updateHud(float dt, double updateCpuMs) {
                 graph.c_str(), g_hitchCount, g_frameIntervalCount, rssText);
         } else {
             std::snprintf(text, sizeof(text),
-                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
-                "PlayLayer::update CPU: %.3f ms\\n"
-                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
-                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+                "PlayLayer::update CPU: %.3f ms\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
                 "Process RSS: %s",
                 updateHz, frameMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
@@ -200,7 +200,7 @@ void updateHud(float dt, double updateCpuMs) {
         }
     } else {
         std::snprintf(text, sizeof(text),
-            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
+            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
             "PlayLayer::update CPU: %.3f ms | RSS %s",
             updateHz, frameMs, updateCpuMs, rssText);
     }
