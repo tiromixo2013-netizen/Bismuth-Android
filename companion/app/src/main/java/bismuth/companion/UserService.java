@@ -48,9 +48,11 @@ public final class UserService extends IBismuthUserService.Stub {
         ServerSocket server = null;
         try {
             server = new ServerSocket();
-            if (!isCurrentRun(runId)) return;
-            serverSocket = server;
             server.setReuseAddress(true);
+            synchronized (this) {
+                if (!isCurrentRun(runId)) return;
+                serverSocket = server;
+            }
             server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4);
             server.setSoTimeout(1000);
             if (isCurrentRun(runId)) {
@@ -86,7 +88,9 @@ public final class UserService extends IBismuthUserService.Stub {
             }
         } finally {
             if (server != null) {
-                if (serverSocket == server) serverSocket = null;
+                synchronized (this) {
+                    if (serverSocket == server) serverSocket = null;
+                }
                 try { server.close(); } catch (IOException ignored) {}
             }
             // An obsolete worker must never change the state of a newer run.
