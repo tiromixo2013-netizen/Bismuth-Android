@@ -400,7 +400,6 @@ void updateHud(float dt, double updateCpuMs) {
     }
     const double averageFps = averageFrameMs > 0.0 ? 1000.0 / averageFrameMs : 0.0;
     const double targetFps = readEngineTargetFps();
-    pollShizukuBridge();
     const double gameCpuPercent = Mod::get()->getSettingValue<bool>("monitor-cpu") ? sampleProcessCpuPercent() : -1.0;
     double gpuPercent = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
     const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
@@ -484,6 +483,9 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         PlayLayer::update(dt);
         const auto end = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
+        // Keep telemetry transport independent from HUD creation/rendering.
+        // If label creation fails, the bridge must still connect and receive samples.
+        pollShizukuBridge();
         syncHud(this);
         if (!g_loggedFirstPlayUpdate) {
             g_loggedFirstPlayUpdate = true;
