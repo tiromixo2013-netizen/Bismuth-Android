@@ -434,6 +434,26 @@ per-child transform calls. No draw replacement or transform bypass is justified
 yet.
 
 
+## Conservative handling of invalid culling input
+
+The CPU reference and GLES classify shader use a conservative fail-open rule:
+if a candidate bound is non-finite/inverted, or the view rectangle is
+non-finite/inverted, the candidate is retained as visible. The original game
+renderer remains responsible for final clipping. A malformed camera/bounds
+sample must reduce optimization, never suppress geometry.
+
+This differs from a failed compute dispatch or invalid buffer/candidate
+payload. Those are operational failures: the caller must reject the generated
+command and use the original draw path. The distinction is intentional:
+bad visibility data means "draw it"; failed GPU execution means "do not consume
+GPU output".
+
+Gles31Culler::dispatch() therefore forwards the view values to the classify
+shader instead of rejecting malformed rectangles. The shader detects invalid
+view data and marks all uploaded candidates visible. This path has host-side
+reference coverage and shader compilation validation; live-driver behavior
+still requires device testing.
+
 ## Fail-closed dispatch behavior
 
 The standalone GLES culler now clears its four-word indirect command to
