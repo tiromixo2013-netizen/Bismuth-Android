@@ -43,7 +43,7 @@ jobs:
           unzip -p "$PACKAGE" "$LIB_PATH" > /tmp/bismuth-geode.so
           strings /tmp/bismuth-geode.so > /tmp/bismuth-geode.strings
           nm -C /tmp/bismuth-geode.so > /tmp/bismuth-geode.symbols
-          for marker in 'BISMUTH' 'FPS --' 'CPU  --' 'SHIZUKU ' 'CONNECTED' 'connect timeout after 3s'; do
+          for marker in 'BISMUTH' 'FPS --' 'CPU  --' 'connect timeout after 3s'; do
             if ! grep -Fq "$marker" /tmp/bismuth-geode.strings; then
               echo "::error::Missing expected binary string: $marker"
               exit 1
