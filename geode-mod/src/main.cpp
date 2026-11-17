@@ -497,15 +497,15 @@ void updateHud(float dt, double updateCpuMs) {
 
     const double cpuShown = gameCpuPercent >= 0.0 ? gameCpuPercent : g_shizukuSnapshot.deviceCpu;
     auto* cpuLabel = g_bismuthHudPanel->getChildByID("bismuth.android/cpu-label");
-    if (auto* label = typeinfo_cast<CCLabelTTF*>(cpuLabel)) {
+    if (auto* label = static_cast<CCLabelTTF*>(cpuLabel)) {
         std::ostringstream value;
         value.setf(std::ios::fixed); value.precision(0);
-        value << "CPU  " << (cpuShown >= 0.0 ? value.str() : std::string("--"));
-        if (cpuShown >= 0.0) { value.str(""); value.clear(); value << "CPU  " << cpuShown << "%"; }
+        if (cpuShown >= 0.0) value << "CPU  " << cpuShown << "%";
+        else value << "CPU  --";
         label->setString(value.str().c_str());
     }
     auto* gpuLabelNode = g_bismuthHudPanel->getChildByID("bismuth.android/gpu-label");
-    if (auto* label = typeinfo_cast<CCLabelTTF*>(gpuLabelNode)) {
+    if (auto* label = static_cast<CCLabelTTF*>(gpuLabelNode)) {
         std::ostringstream value;
         value.setf(std::ios::fixed); value.precision(0);
         value << "GPU  " << (gpuPercent >= 0.0 ? std::to_string(static_cast<int>(gpuPercent)) + "%" : "N/A");
@@ -539,13 +539,12 @@ public:
     }
 
     ~BismuthHudController() override {
-        if (g_bismuthHudPanel && g_bismuthHudPanel->getParent() == this) {
-            g_bismuthHudPanel = nullptr;
-            g_bismuthHud = nullptr;
-            g_bismuthFpsLabel = nullptr;
-            g_bismuthCpuFill = nullptr;
-            g_bismuthGpuFill = nullptr;
-        }
+        g_bismuthHudPanel = nullptr;
+        g_bismuthHud = nullptr;
+        g_bismuthFpsLabel = nullptr;
+        g_bismuthCpuFill = nullptr;
+        g_bismuthGpuFill = nullptr;
+        g_lastHudText.clear();
     }
 
     void update(float dt) override {
