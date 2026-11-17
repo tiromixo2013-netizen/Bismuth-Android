@@ -33,6 +33,12 @@ class BridgeContractTests(unittest.TestCase):
             self.assertIn(method, AIDL)
             self.assertIn(method, USER_SERVICE)
 
+    def test_native_parser_rejects_malformed_or_stale_telemetry(self):
+        self.assertIn("std::isfinite(values[i])", GEODE)
+        self.assertIn("parsed != field.size()", GEODE)
+        self.assertIn("validPercent(values[0])", GEODE)
+        self.assertIn("g_shizukuSnapshot = ShizukuSnapshot{}", GEODE)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
