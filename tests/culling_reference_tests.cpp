@@ -70,10 +70,14 @@ int main() {
         {{5, 5, 1, 1}, 10}, {{nan, 0, 10, 10}, 11},
         {{0, 0, 10, 10}, 12}
     };
-    auto validOnly = cullStable(invalidBounds, view);
-    assert((validOnly.visibleIndices == std::vector<std::uint32_t>{2}));
+    auto failOpenBounds = cullStable(invalidBounds, view);
+    assert((failOpenBounds.visibleIndices == std::vector<std::uint32_t>{0, 1, 2}));
     auto invalidView = cullStable(candidates, Rect{nan, 0, 100, 100});
-    assert(invalidView.visibleIndices.empty());
+    assert((invalidView.visibleIndices == std::vector<std::uint32_t>{0, 1, 2, 3, 4}));
+    assert(intersects(Bounds{nan, 0, 10, 10}, view));
+    assert(intersects(Bounds{0, 0, 1, 1}, Rect{10, 10, 0, 0}));
+    assert((cullStablePayloads(atlasCandidates, Rect{nan, 0, 1, 1}) ==
+            std::vector<std::uint32_t>{17, 3, 42, 9}));
 
     std::vector<std::uint16_t> elements;
     assert(buildAtlasElementIndices16({2u, 0u, 1u}, 3u, elements));
