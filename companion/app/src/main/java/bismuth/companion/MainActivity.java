@@ -5,6 +5,8 @@ import android.content.ComponentName;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.view.Gravity;
@@ -18,6 +20,16 @@ public final class MainActivity extends Activity {
     private TextView status;
     private IBismuthUserService service;
     private boolean bound;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable statusRefresh = new Runnable() {
+        @Override public void run() {
+            if (service != null) {
+                try { show(service.getStatus()); }
+                catch (RemoteException e) { show("Telemetry service status unavailable: " + e); }
+            }
+            if (bound) handler.postDelayed(this, 1000);
+        }
+    };
     private final Shizuku.OnBinderReceivedListener binderReceived = this::refreshStatus;
     private final Shizuku.OnBinderDeadListener binderDead = () -> show("Shizuku disconnected. Restart Shizuku and reopen this app.");
     private final Shizuku.OnRequestPermissionResultListener permissionResult = (code, result) -> {
@@ -28,12 +40,15 @@ public final class MainActivity extends Activity {
         @Override public void onServiceConnected(ComponentName name, IBinder binder) {
             service = IBismuthUserService.Stub.asInterface(binder);
             bound = true;
+            handler.removeCallbacks(statusRefresh);
+            handler.post(statusRefresh);
             try {
                 service.startBridge();
                 show(service.getStatus() + "\nKeep this app's bridge running while Geometry Dash is open.");
             } catch (RemoteException e) { show("Could not start telemetry bridge: " + e); }
         }
         @Override public void onServiceDisconnected(ComponentName name) {
+            handler.removeCallbacks(statusRefresh);
             service = null; bound = false; show("Shizuku UserService disconnected.");
         }
     };
@@ -110,6 +125,7 @@ public final class MainActivity extends Activity {
     private void show(String text) { if (status != null) status.setText(text); }
 
     @Override protected void onDestroy() {
+        handler.removeCallbacks(statusRefresh);
         Shizuku.removeBinderReceivedListener(binderReceived);
         Shizuku.removeBinderDeadListener(binderDead);
         Shizuku.removeRequestPermissionResultListener(permissionResult);
