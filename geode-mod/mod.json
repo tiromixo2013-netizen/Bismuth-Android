@@ -22,7 +22,19 @@
     "hud-enabled": {
       "type": "bool",
       "name": "Live performance HUD",
-      "description": "Show a compact top-left in-game HUD with game-loop cadence and PlayLayer CPU update time. GPU and draw-call values are shown as unavailable when not measured.",
+      "description": "Show a compact top-left in-game HUD. Values are limited to metrics actually measured by this package.",
+      "default": true
+    },
+    "hud-advanced": {
+      "type": "bool",
+      "name": "Advanced monitor",
+      "description": "Show frame interval percentiles, estimated 1% low, CPU update time, hitch count, and sample count.",
+      "default": false
+    },
+    "hud-graph": {
+      "type": "bool",
+      "name": "Frame cadence graph",
+      "description": "Show a compact rolling 24-sample frame-cadence graph in Advanced Monitor.",
       "default": true
     }
   }
