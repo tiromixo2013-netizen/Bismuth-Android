@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Fast static contract checks for the Companion <-> Shizuku <-> Geode bridge."""
 from pathlib import Path
-import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,25 +13,25 @@ GEODE = (ROOT / "geode-mod/src/main.cpp").read_text()
 
 class BridgeContractTests(unittest.TestCase):
     def test_loopback_endpoint_matches(self):
-        self.assertRegex(USER_SERVICE, r"PORT\\s*=\\s*38471")
+        self.assertIn("PORT = 38471", USER_SERVICE)
         self.assertIn('InetAddress.getByName("127.0.0.1")', USER_SERVICE)
         self.assertIn("htons(38471)", GEODE)
         self.assertIn("htonl(INADDR_LOOPBACK)", GEODE)
 
     def test_csv_protocol_has_six_fields_on_both_sides(self):
-        self.assertRegex(USER_SERVICE, r'"%.2f,%.2f,%.2f,%.2f,%d,%d"')
+        self.assertIn('"%.2f,%.2f,%.2f,%.2f,%d,%d"', USER_SERVICE)
         self.assertIn("std::array<double, 6> values", GEODE)
         self.assertIn("std::getline(in, field, ',')", GEODE)
 
     def test_android_network_permission_and_supported_target(self):
-        self.assertRegex(MANIFEST, r'<uses-permission\\s+android:name="android.permission.INTERNET"')
-        self.assertRegex(APP_GRADLE, r"targetSdk\\s+35")
+        self.assertIn('android:name="android.permission.INTERNET"', MANIFEST)
+        self.assertIn("targetSdk 35", APP_GRADLE)
 
     def test_shizuku_user_service_binder_contract(self):
         self.assertIn("extends IBismuthUserService.Stub", USER_SERVICE)
-        for method in ("startBridge", "stopBridge", "getStatus", "destroy"):
-            self.assertRegex(AIDL, rf"\\b{method}\\s*\\(")
-            self.assertRegex(USER_SERVICE, rf"\\b{method}\\s*\\(")
+        for method in ("startBridge(", "stopBridge(", "getStatus(", "destroy("):
+            self.assertIn(method, AIDL)
+            self.assertIn(method, USER_SERVICE)
 
 
 if __name__ == "__main__":
