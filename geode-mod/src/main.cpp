@@ -2,25 +2,9 @@
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
 
-#include "bismuth/cocos_hooks.hpp"
-
 using namespace geode::prelude;
 
 namespace {
-bismuth::AtlasPassiveObserver g_observer;
-bool g_hooksReady = false;
-
-void applySettings() {
-    const bool telemetry = Mod::get()->getSettingValue<bool>("passive-telemetry");
-    const bool gpuTiming = Mod::get()->getSettingValue<bool>("gpu-timing");
-
-    // The all-visible EBO bridge is deliberately kept disabled. It is not
-    // real sprite culling and has not passed on-device visual/performance tests.
-    bismuth::setGpuDrawBridgeEnabled(false);
-    bismuth::setPassiveTelemetryEnabled(telemetry && g_hooksReady);
-    bismuth::setGpuTimingEnabled(gpuTiming && g_hooksReady);
-}
-
 void addPauseSettingsButton(CCNode* layer, CCObject* target, SEL_MenuHandler selector) {
     auto icon = CCSprite::createWithSpriteFrameName("GJ_optionsBtn_001.png");
     if (!icon) {
@@ -70,21 +54,12 @@ class $modify(BismuthEditorPauseLayer, EditorPauseLayer) {
 };
 
 $on_mod(Loaded) {
-    std::string error;
-    g_hooksReady = bismuth::installCocosPassiveHooks(&g_observer, &error);
-    if (g_hooksReady) {
-        log::info("Bismuth: verified 2.2081 ARM64 passive Cocos hooks installed.");
-    } else {
-        log::warn("Bismuth: passive hooks unavailable; original renderer remains active. {}", error);
+    // Safe mode: do not patch Cocos2d from Geode's Loaded event. The game
+    // renderer may already be active and other mods may own hooks on the same
+    // methods. Native hook integration remains dormant until a separately
+    // validated pre-render installation path is available.
+    log::info("Bismuth: Geode UI loaded in safe mode; native Cocos hooks are not installed.");
+    if (Mod::get()->getSettingValue<bool>("diagnostics")) {
+        log::info("Bismuth diagnostics: pause-menu settings entry is available; renderer hooks are disabled.");
     }
-
-    applySettings();
-    listenForSettingChanges<bool>("passive-telemetry", [](bool) { applySettings(); });
-    listenForSettingChanges<bool>("gpu-timing", [](bool) { applySettings(); });
-    listenForSettingChanges<bool>("diagnostics", [](bool enabled) {
-        if (enabled) {
-            log::info("Bismuth diagnostics: hooks ready={}, GPU timing supported={}",
-                g_hooksReady, bismuth::gpuTimingSnapshot().supported);
-        }
-    });
 }
