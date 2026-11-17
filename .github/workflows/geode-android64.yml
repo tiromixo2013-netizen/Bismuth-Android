@@ -43,14 +43,14 @@ jobs:
           unzip -p "$PACKAGE" "$LIB_PATH" > /tmp/bismuth-geode.so
           strings /tmp/bismuth-geode.so > /tmp/bismuth-geode.strings
           nm -C /tmp/bismuth-geode.so > /tmp/bismuth-geode.symbols
-          for marker in 'BISMUTH' 'FPS --' 'CPU  --' 'connect timeout after 3s'; do
+          for marker in 'BISMUTH' 'FPS --' 'CPU  --' 'connect timeout after 3s' 'telemetry timeout after 2s' 'server closed connection'; do
             if ! grep -Fq "$marker" /tmp/bismuth-geode.strings; then
               echo "::error::Missing expected binary string: $marker"
               exit 1
             fi
             echo "PASS string: $marker"
           done
-          for symbol in 'AsStaticFunction_onEnterTransitionDidFinish' 'BismuthHudController::update' 'pollShizukuBridge' 'parseShizukuLine'; do
+          for symbol in 'AsStaticFunction_onEnterTransitionDidFinish' 'BismuthHudController::update'; do
             if ! grep -Fq "$symbol" /tmp/bismuth-geode.symbols; then
               echo "::error::Missing expected binary symbol: $symbol"
               exit 1
