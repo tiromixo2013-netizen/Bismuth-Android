@@ -19,8 +19,10 @@ inline bool isValidRect(const Rect& r) noexcept {
            std::isfinite(r.right) && std::isfinite(r.top) &&
            r.left <= r.right && r.bottom <= r.top;
 }
+// Conservative visibility predicate: malformed input must never hide a
+// potentially visible object. Invalid bounds/view therefore fail open.
 inline bool intersects(const Bounds& a, const Rect& r) noexcept {
-    if (!isValidBounds(a) || !isValidRect(r)) return false;
+    if (!isValidBounds(a) || !isValidRect(r)) return true;
     return a.right >= r.left && a.left <= r.right &&
            a.top >= r.bottom && a.bottom <= r.top;
 }
