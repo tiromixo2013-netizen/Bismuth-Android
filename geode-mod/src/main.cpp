@@ -69,6 +69,7 @@ bool g_shizukuConnected = false;
 std::string g_shizukuRx;
 std::string g_shizukuLastError;
 auto g_shizukuNextPoll = std::chrono::steady_clock::time_point{};
+auto g_shizukuLastSample = std::chrono::steady_clock::time_point{};
 auto g_shizukuConnectStarted = std::chrono::steady_clock::time_point{};
 
 void closeShizukuSocket() {
@@ -110,6 +111,7 @@ void parseShizukuLine(const std::string& line) {
     g_shizukuSnapshot.ramUsedMb = values[4];
     g_shizukuSnapshot.ramTotalMb = values[5];
     g_shizukuConnected = true;
+    g_shizukuLastSample = std::chrono::steady_clock::now();
     g_shizukuLastError.clear();
 }
 
@@ -121,6 +123,10 @@ void pollShizukuBridge() {
     const auto now = std::chrono::steady_clock::now();
     if (now < g_shizukuNextPoll) return;
     g_shizukuNextPoll = now + std::chrono::milliseconds(250);
+    if (g_shizukuConnected && now - g_shizukuLastSample > std::chrono::seconds(2)) {
+        closeShizukuSocket();
+        g_shizukuLastError = "telemetry timeout after 2s";
+    }
 
     if (g_shizukuSocket < 0) {
         const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
