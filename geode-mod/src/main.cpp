@@ -11,6 +11,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <dirent.h>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <unistd.h>
 
@@ -38,6 +41,76 @@ std::uint64_t g_batchDrawCallsLast = 0;
 std::uint64_t g_batchChildrenLast = 0;
 std::uint64_t g_batchCpuNsLast = 0;
 bool g_loggedFirstPlayUpdate = false;
+
+double sampleProcessCpuPercent() {
+    static std::uint64_t previousTicks = 0;
+    static auto previousTime = std::chrono::steady_clock::now();
+    std::ifstream input("/proc/self/stat");
+    std::string line;
+    if (!std::getline(input, line)) return -1.0;
+    const auto close = line.rfind(')');
+    if (close == std::string::npos) return -1.0;
+    std::istringstream fields(line.substr(close + 2));
+    std::string token;
+    std::uint64_t user = 0, system = 0;
+    for (int i = 0; i <= 12; ++i) {
+        if (!(fields >> token)) return -1.0;
+        if (i == 11) { try { user = std::stoull(token); } catch (...) { return -1.0; } }
+        if (i == 12) { try { system = std::stoull(token); } catch (...) { return -1.0; } }
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(now - previousTime).count();
+    const long hz = ::sysconf(_SC_CLK_TCK);
+    const long cores = ::sysconf(_SC_NPROCESSORS_ONLN);
+    const std::uint64_t ticks = user + system;
+    const std::uint64_t delta = ticks >= previousTicks ? ticks - previousTicks : 0;
+    previousTicks = ticks;
+    previousTime = now;
+    if (seconds <= 0.0 || hz <= 0 || cores <= 0) return -1.0;
+    return std::clamp((static_cast<double>(delta) / hz) / seconds / cores * 100.0, 0.0, 100.0);
+}
+
+double sampleKgslGpuPercent() {
+    static std::uint64_t previousBusy = 0, previousTotal = 0;
+    std::ifstream input("/sys/class/kgsl/kgsl-3d0/gpubusy");
+    if (!input) return -1.0;
+    std::uint64_t busy = 0, total = 0;
+    if (!(input >> busy >> total) || total <= previousTotal || busy < previousBusy) return -1.0;
+    const auto deltaBusy = busy - previousBusy;
+    const auto deltaTotal = total - previousTotal;
+    previousBusy = busy;
+    previousTotal = total;
+    return std::clamp(static_cast<double>(deltaBusy) / static_cast<double>(deltaTotal) * 100.0, 0.0, 100.0);
+}
+
+double readThermalZoneC(const char* wanted) {
+    DIR* dir = ::opendir("/sys/class/thermal");
+    if (!dir) return -1.0;
+    double hottest = -1.0;
+    while (auto* entry = ::readdir(dir)) {
+        if (std::string(entry->d_name).find("thermal_zone") != 0) continue;
+        const std::string base = std::string("/sys/class/thermal/") + entry->d_name + "/";
+        std::ifstream typeFile(base + "type");
+        std::string type;
+        if (!std::getline(typeFile, type)) continue;
+        std::transform(type.begin(), type.end(), type.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (type.find(wanted) == std::string::npos) continue;
+        std::ifstream tempFile(base + "temp");
+        long milliC = 0;
+        if (tempFile >> milliC && milliC > 0 && milliC < 150000)
+            hottest = std::max(hottest, static_cast<double>(milliC) / 1000.0);
+    }
+    ::closedir(dir);
+    return hottest;
+}
+
+double readEngineTargetFps() {
+    auto* director = CCDirector::sharedDirector();
+    if (!director) return -1.0;
+    const double interval = director->getAnimationInterval();
+    return interval > 0.0 ? 1.0 / interval : -1.0;
+}
+
 
 void addPauseSettingsButton(CCNode* layer, CCObject* target, SEL_MenuHandler selector) {
     auto icon = CCSprite::createWithSpriteFrameName("GJ_optionsBtn_001.png");
@@ -187,54 +260,36 @@ void updateHud(float dt, double updateCpuMs) {
     const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
     const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
     const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
+    double averageFrameMs = 0.0;
+    if (g_frameIntervalCount) {
+        for (std::size_t i = 0; i < g_frameIntervalCount; ++i) averageFrameMs += g_frameIntervalsMs[i];
+        averageFrameMs /= static_cast<double>(g_frameIntervalCount);
+    }
+    const double averageFps = averageFrameMs > 0.0 ? 1000.0 / averageFrameMs : 0.0;
+    const double targetFps = readEngineTargetFps();
+    const double gameCpuPercent = sampleProcessCpuPercent();
+    const double gpuPercent = sampleKgslGpuPercent();
+    const double cpuTempC = readThermalZoneC("cpu");
+    const double gpuTempC = readThermalZoneC("gpu");
+
 
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
     const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
     char text[768];
-    if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
-        if (Mod::get()->getSettingValue<bool>("hud-graph")) {
-            const auto graph = makeFrameGraph();
-            std::snprintf(text, sizeof(text),
-                "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
-                "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
-                "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
-                "Cadence: %s\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Sprite batches: %llu | children: %llu\n"
-                "Batch CPU: %.3f ms | GPU: N/A | GL calls: N/A\n"
-                "Process RSS: %s",
-                loopFps, frameMs, lowFpsEstimate, updateCpuMs,
-                g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
-                g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
-                graph.c_str(), g_hitchCount, g_frameIntervalCount,
-                static_cast<unsigned long long>(g_batchDrawCallsLast),
-                static_cast<unsigned long long>(g_batchChildrenLast), batchCpuMs,
-                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
-        } else {
-            std::snprintf(text, sizeof(text),
-                "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
-                "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
-                "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Sprite batches: %llu | children: %llu | batch CPU %.3f ms\n"
-                "GPU time: N/A | GL calls: N/A | RSS: %s",
-                loopFps, frameMs, lowFpsEstimate, updateCpuMs,
-                g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
-                g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
-                g_hitchCount, g_frameIntervalCount,
-                static_cast<unsigned long long>(g_batchDrawCallsLast),
-                static_cast<unsigned long long>(g_batchChildrenLast), batchCpuMs,
-                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
-        }
-    } else {
-        std::snprintf(text, sizeof(text),
-            "BISMUTH | LOOP %.1f FPS | %.2f ms\n"
-            "1%% LOW* %.1f | CPU update %.3f ms | RSS %s",
-            loopFps, frameMs, lowFpsEstimate, updateCpuMs,
-            processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
-    }
+    std::snprintf(text, sizeof(text),
+        "BISMUTH | FPS %.1f | AVG %.1f | TARGET %.0f\n"
+        "1%% LOW* %.1f | FRAME %.2f ms\n"
+        "CPU %s | GPU %s\n"
+        "CPU TEMP %s | GPU TEMP %s\n"
+        "BATCH %llu | CHILDREN %llu | DRAW CPU %.2f ms",
+        loopFps, averageFps, targetFps > 0.0 ? targetFps : 0.0,
+        lowFpsEstimate, frameMs,
+        gameCpuPercent >= 0.0 ? (std::to_string(gameCpuPercent) + "%").c_str() : "N/A",
+        gpuPercent >= 0.0 ? (std::to_string(gpuPercent) + "%").c_str() : "N/A",
+        cpuTempC >= 0.0 ? (std::to_string(cpuTempC) + " C").c_str() : "N/A",
+        gpuTempC >= 0.0 ? (std::to_string(gpuTempC) + " C").c_str() : "N/A",
+        static_cast<unsigned long long>(g_batchDrawCallsLast),
+        static_cast<unsigned long long>(g_batchChildrenLast), batchCpuMs);
     g_bismuthHud->setString(text);
 }
 }
