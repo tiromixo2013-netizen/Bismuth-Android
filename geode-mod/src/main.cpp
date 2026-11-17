@@ -30,6 +30,8 @@ using namespace geode::prelude;
 namespace {
 CCLabelTTF* g_bismuthHud = nullptr;
 CCLabelTTF* g_bismuthFpsLabel = nullptr;
+CCLabelTTF* g_bismuthCpuLabel = nullptr;
+CCLabelTTF* g_bismuthGpuLabel = nullptr;
 CCLayerColor* g_bismuthCpuFill = nullptr;
 CCLayerColor* g_bismuthGpuFill = nullptr;
 CCLayerColor* g_bismuthHudPanel = nullptr;
@@ -380,6 +382,7 @@ void createHud(CCNode* controller) {
         cpuLabel->setPosition({8.f, 30.f});
         cpuLabel->setColor({125, 220, 255});
         panel->addChild(cpuLabel);
+        g_bismuthCpuLabel = cpuLabel;
         cpuLabel->setID("bismuth.android/cpu-label"_spr);
     }
     auto cpuBg = CCLayerColor::create({39, 54, 52, 230}, 174.f, 4.f);
@@ -397,6 +400,7 @@ void createHud(CCNode* controller) {
         gpuLabel->setPosition({8.f, 12.f});
         gpuLabel->setColor({185, 160, 255});
         panel->addChild(gpuLabel);
+        g_bismuthGpuLabel = gpuLabel;
         gpuLabel->setID("bismuth.android/gpu-label"_spr);
     }
     auto gpuBg = CCLayerColor::create({39, 54, 52, 230}, 174.f, 4.f);
@@ -420,6 +424,8 @@ void syncHud(CCNode* controller) {
             g_bismuthHudPanel = nullptr;
             g_bismuthHud = nullptr;
             g_bismuthFpsLabel = nullptr;
+            g_bismuthCpuLabel = nullptr;
+            g_bismuthGpuLabel = nullptr;
             g_bismuthCpuFill = nullptr;
             g_bismuthGpuFill = nullptr;
             g_lastHudText.clear();
@@ -496,16 +502,14 @@ void updateHud(float dt, double updateCpuMs) {
     g_bismuthHud->setString(frameText.c_str());
 
     const double cpuShown = gameCpuPercent >= 0.0 ? gameCpuPercent : g_shizukuSnapshot.deviceCpu;
-    auto* cpuLabel = g_bismuthHudPanel->getChildByID("bismuth.android/cpu-label");
-    if (auto* label = static_cast<CCLabelTTF*>(cpuLabel)) {
+    if (auto* label = g_bismuthCpuLabel) {
         std::ostringstream value;
         value.setf(std::ios::fixed); value.precision(0);
         if (cpuShown >= 0.0) value << "CPU  " << cpuShown << "%";
         else value << "CPU  --";
         label->setString(value.str().c_str());
     }
-    auto* gpuLabelNode = g_bismuthHudPanel->getChildByID("bismuth.android/gpu-label");
-    if (auto* label = static_cast<CCLabelTTF*>(gpuLabelNode)) {
+    if (auto* label = g_bismuthGpuLabel) {
         std::ostringstream value;
         value.setf(std::ios::fixed); value.precision(0);
         value << "GPU  " << (gpuPercent >= 0.0 ? std::to_string(static_cast<int>(gpuPercent)) + "%" : "N/A");
@@ -542,6 +546,8 @@ public:
         g_bismuthHudPanel = nullptr;
         g_bismuthHud = nullptr;
         g_bismuthFpsLabel = nullptr;
+        g_bismuthCpuLabel = nullptr;
+        g_bismuthGpuLabel = nullptr;
         g_bismuthCpuFill = nullptr;
         g_bismuthGpuFill = nullptr;
         g_lastHudText.clear();
