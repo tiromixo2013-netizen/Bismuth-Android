@@ -261,3 +261,15 @@ that same path, the Geode HUD uses a standalone `CCLabelTTF` and throttles
 texture/string refreshes. This reduces overlap with the recorded failure path;
 it does not establish a root-cause fix. The original level-page scrolling
 reproduction remains a required on-device crash test.
+
+
+## Process resident-memory HUD metric
+
+The Geode HUD optionally reads the second field of `/proc/self/statm` at the
+existing 4 Hz text-refresh cadence and converts resident pages using
+`sysconf(_SC_PAGESIZE)`. It is labelled **Process RSS** because it includes
+resident pages for the whole process; it is not a native-heap-only measurement
+and does not identify allocations by subsystem. If procfs access or parsing
+fails, the HUD displays N/A. The metric can be disabled with the
+`hud-memory` setting. This sampling does not allocate GL resources or perform
+GPU readback.
