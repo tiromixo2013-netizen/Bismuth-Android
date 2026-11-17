@@ -59,6 +59,19 @@ int main() {
     };
     auto stable = cullStable(ordered, Rect{-1, -1, 10, 10});
     assert((stable.visibleIndices == std::vector<std::uint32_t>{0, 1, 2}));
+    std::vector<std::uint32_t> reusedIndices;
+    cullStableInto(ordered, Rect{-1, -1, 10, 10}, reusedIndices);
+    const auto warmedCapacity = reusedIndices.capacity();
+    assert((reusedIndices == std::vector<std::uint32_t>{0, 1, 2}));
+    cullStableInto(ordered, Rect{0, 0, 2, 2}, reusedIndices);
+    assert(reusedIndices.capacity() == warmedCapacity);
+    assert((reusedIndices == std::vector<std::uint32_t>{0, 1}));
+    std::vector<std::uint32_t> reusedPayloads;
+    cullStablePayloadsInto(ordered, Rect{-1, -1, 10, 10}, reusedPayloads);
+    const auto warmedPayloadCapacity = reusedPayloads.capacity();
+    cullStablePayloadsInto(ordered, Rect{0, 0, 2, 2}, reusedPayloads);
+    assert(reusedPayloads.capacity() == warmedPayloadCapacity);
+    assert((reusedPayloads == std::vector<std::uint32_t>{9, 8}));
     std::vector<Candidate> atlasCandidates = {
         {{-5, 0, 5, 5}, 17}, {{200, 0, 210, 5}, 3},
         {{10, 10, 20, 20}, 42}, {{0, 0, 1, 1}, 9}
