@@ -16,8 +16,9 @@ Bismuth Android is packaged as a Geode mod for Geometry Dash 2.2081 ARM64.
 - The Geode package runs in safe mode: it does not install Cocos2d/Dobby hooks from the Geode Loaded event.
 - This avoids patching renderer methods after the game render path may already be active or while other mods own hooks on those methods.
 - The original Cocos renderer remains untouched.
-- Native hook and GPU-timing code remains experimental and is not activated by this Geode package.
-- The experimental all-visible GPU EBO bridge remains disabled and is not real sprite culling.
+- The Geode package now uses a narrow Geode-managed `CCTextureAtlas::drawNumberOfQuads` hook to count actual atlas draw submissions and measure their CPU wall time. It calls the original renderer method unchanged.
+- Dobby-based native hooks and GPU timer queries remain experimental and are not activated by this Geode package.
+- The experimental all-visible GPU EBO bridge remains disabled; it is not sprite culling and is not exposed as an enabled feature.
 
 ## Crash-safety note
 
@@ -42,7 +43,9 @@ The first device test should use one repeatable level and verify:
 5. opening and closing settings returns to the same pause screen;
 6. opening level selection and scrolling pages does not crash.
 
-The HUD currently measures game-loop update cadence and the wall-clock duration
-of `PlayLayer::update`. It does not measure display-present FPS, GPU usage,
-whole-frame GPU time, RAM usage, or draw calls. No performance gain is claimed
+The HUD measures `PlayLayer::update` cadence and CPU wall time, frame-interval
+percentiles, hitches, process RSS, and actual `CCTextureAtlas::drawNumberOfQuads`
+submission count plus CPU wall time spent in that Cocos method. Atlas draw CPU
+time is not GPU execution time. The HUD does not claim display-present FPS,
+GPU utilization, or whole-frame GPU time. No performance gain is claimed
 without on-device A/B testing.
