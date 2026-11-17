@@ -132,7 +132,11 @@ void pollShizukuBridge() {
         const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (fd < 0) { g_shizukuLastError = std::string("socket: ") + std::strerror(errno); return; }
         const int flags = ::fcntl(fd, F_GETFL, 0);
-        ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+            g_shizukuLastError = std::string("fcntl: ") + std::strerror(errno);
+            ::close(fd);
+            return;
+        }
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_port = htons(38471);
