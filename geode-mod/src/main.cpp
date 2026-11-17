@@ -164,13 +164,14 @@ void updateHud(float dt, double updateCpuMs) {
                 "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
                 "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
                 "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
+                "Cadence: %s\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
                 "Process RSS: %s | GPU usage/time: N/A\n"
                 "Draw calls: N/A",
                 loopFps, frameMs, lowFpsEstimate, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
-                g_hitchCount, g_frameIntervalCount,
+                graph.c_str(), g_hitchCount, g_frameIntervalCount,
                 processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
         } else {
             std::snprintf(text, sizeof(text),
