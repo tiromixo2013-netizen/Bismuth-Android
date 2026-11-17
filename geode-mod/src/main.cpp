@@ -669,7 +669,7 @@ class $modify(BismuthEditorPauseLayer, EditorPauseLayer) {
 
 $on_mod(Loaded) {
     // Register safe Geode-level telemetry hooks; no draw replacement or GPU culling is enabled.
-    log::info("Bismuth: Geode mod loaded; PlayLayer lifecycle/postUpdate and CCSpriteBatchNode telemetry hooks are registered.");
+    log::info("Bismuth: Geode mod loaded; PlayLayer transition lifecycle and CCSpriteBatchNode draw observer are registered.");
     if (Mod::get()->getSettingValue<bool>("diagnostics")) {
         log::info("Bismuth diagnostics: HUD reports PlayLayer cadence, CPU update time, SpriteBatch draw invocations/children and batch CPU submission time. GPU execution time and raw GL draw calls are not measured.");
     }
