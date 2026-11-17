@@ -22,19 +22,37 @@
     "hud-enabled": {
       "type": "bool",
       "name": "Live performance HUD",
-      "description": "Show a compact top-left monitor with current and average game-loop FPS, estimated 1% low, engine frame target, process CPU, best-effort GPU load and readable CPU/GPU thermal zones.",
+      "description": "Show the in-game top-left monitor with game-loop FPS, frame time, optional CPU/GPU usage and temperature, advanced frame percentiles, memory, and renderer CPU-submission counters.",
       "default": true
     },
     "hud-advanced": {
       "type": "bool",
-      "name": "Advanced monitor",
-      "description": "Show frame-interval percentiles, estimated 1% low, game update wall time, hitch count, and sample count. FPS is based on the game-loop update interval, not display-present instrumentation.",
+      "name": "Advanced frame analysis",
+      "description": "Show frame P50/P95/P99, estimated 1% low, PlayLayer update CPU wall time P50/P95/P99, hitch count, and sample count. This is game-loop timing, not display-present FPS.",
       "default": true
     },
     "hud-graph": {
       "type": "bool",
       "name": "Frame cadence graph",
-      "description": "Show the rolling 24-sample frame-cadence graph in Advanced Monitor.",
+      "description": "Show a rolling 24-sample frame cadence graph in Advanced Frame Analysis.",
+      "default": true
+    },
+    "monitor-cpu": {
+      "type": "bool",
+      "name": "Measure game CPU usage",
+      "description": "Sample this game's process CPU time from /proc/self/stat. The percentage is normalized across online CPU cores.",
+      "default": true
+    },
+    "monitor-gpu": {
+      "type": "bool",
+      "name": "Measure GPU usage",
+      "description": "Try cumulative GPU busy/total counters exposed by the Android devfreq driver (including supported Mali drivers). Shows N/A when the kernel does not expose readable counters.",
+      "default": true
+    },
+    "monitor-thermal": {
+      "type": "bool",
+      "name": "Measure CPU/GPU temperature",
+      "description": "Search readable thermal-zone type names for CPU and GPU sensors. OEM sensor labels vary; unavailable readings show N/A.",
       "default": true
     },
     "hud-memory": {
