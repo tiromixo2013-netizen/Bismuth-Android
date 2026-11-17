@@ -1,19 +1,19 @@
 # Bismuth-Android
 
-Experimental Android-native GPU visibility-culling prototype for Geometry Dash 2.2081 ARM64.
+Android ARM64 Geode mod for Geometry Dash 2.2081, with a native GLES 3.1 renderer-research backend.
 
-The project explores a GPU-assisted path for classifying sprite bounds, compacting visible indices in stable submission order, and preparing an indirect-draw command using OpenGL ES 3.1 compute shaders. It is a clean-room implementation of general rendering concepts; it does not copy Bismuth PC source code.
+The project explores GPU-assisted sprite classification, stable visible-index compaction, and indirect-draw preparation. It is a clean-room implementation of general rendering concepts; it does not copy Bismuth PC source code.
 
-> **Status: prototype only.** This is not an installable Geometry Dash mod and is not yet integrated with the game's renderer. No Android device performance claim is made.
+> **Current Geode status: safe-mode package.** The pause-menu settings UI is active, but Cocos2d hooks, live renderer telemetry, GPU timing, and the experimental draw bridge are not activated by the Geode package. No Android device performance gain is claimed.
 
 ## What exists
 
 - Portable CPU reference culler with stable input ordering.
 - Optional Android GLES 3.1 compute backend.
-- Three compute stages: classify + per-workgroup scan, group offsets, stable scatter.
-- Embedded GPU shaders are generated directly from `shaders/*.comp` during CMake configuration.
-- No CPU readback or `glFinish` in the compute dispatch path.
+- Compute stages for classification, group offsets, stable scatter, and atlas-index generation.
+- Embedded GPU shaders generated from `shaders/*.comp` during CMake configuration.
 - Host-side unit tests and GitHub Actions CI.
+- Geode Android64 pause-menu settings entry for gameplay and editor pause screens.
 
 ## Build host reference tests
 
@@ -29,80 +29,30 @@ Use Android NDK + CMake and set `-DBISMUTH_ENABLE_GLES31=ON`. The calling applic
 
 ## Important limitations
 
-- Build-ID-gated passive Cocos hooks are available for the verified 2.2081 ARM64 target; they observe draw/atlas activity but do not replace the game's renderer.
-- No automatic sprite-bound extraction or production texture/material batching is integrated yet.
-- The current compute implementation supports up to 16,384 candidates per dispatch.
-- The generic indirect command is not yet wired into Geometry Dash's draw path.
-- GPU shaders have not yet been validated across real Android drivers.
+- Native Cocos hooks are experimental and dormant in the current Geode package.
+- Hook installation needs a verified pre-render lifecycle point and coexistence tests with other mods.
+- No automatic sprite-bound extraction or production texture/material batching is integrated.
+- The compute prototype supports up to 16,384 candidates per dispatch.
+- The GPU compute outputs are not a validated Geometry Dash renderer replacement.
 - No FPS or latency improvement is claimed until on-device A/B profiling is complete.
 
-See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work. See [docs/performance-telemetry.md](docs/performance-telemetry.md) for CPU timing counters and [docs/gpu-timing.md](docs/gpu-timing.md) for opt-in asynchronous GPU timing and its limitations.
+See [docs/renderer-integration.md](docs/renderer-integration.md) for the required integration work, [docs/performance-telemetry.md](docs/performance-telemetry.md) for telemetry design, and [docs/cocos-passive-hooks.md](docs/cocos-passive-hooks.md) for the experimental hook adapter's safety status.
 
-## Native shared-library API (bootstrap)
+## Geode Android64 package
 
-The Android build now exports a small C ABI from `libbismuth.so`: `bismuth_create`,
-`bismuth_initialize`, `bismuth_upload`, `bismuth_dispatch`, buffer-handle getters,
-and `bismuth_destroy`. Create and call the instance only on a thread with the owning
-GLES 3.1 context current. The caller supplies conservative candidate bounds in the
-renderer submission order. The visible-index and indirect-command buffer handles are
-for integration code to consume; this library does not yet issue Geometry Dash draw calls.
-
-This API makes the culling backend callable from native integration code, but it is
-still not a Geometry Dash hook or installable mod package.
-
-
-## Android C integration header
-
-Native consumers can include `bismuth/android_api.h` without depending on C++ headers.
-`BismuthCandidate` is a fixed 32-byte C struct matching the compute shader's std430 record. `BISMUTH_MAX_CANDIDATES` exposes the current 16,384-record per-dispatch ceiling; oversized C uploads are rejected before temporary allocation.
-The capability bits describe what was compiled into the library; they do not mean that a
-GLES context exists or that the culler has initialized. Call `bismuth_initialize` only
-on the render thread while the intended GLES 3.1 context is current, then check
-`bismuth_is_initialized`. The owning context must also be current when destroying an instance.
-
-The CI suite compiles this header as C as well as C++, so ABI declarations remain usable
-from a future Android loader or JNI bridge.
-
-
-## Android APK loader helper
-
-See [docs/android-loader.md](docs/android-loader.md) for the ARM64 APK loading preparation
-and the limitations of the current bootstrap. The helper script validates and copies
-`libbismuth.so` and patches the Geometry Dash Smali library-load call; it does not rebuild
-or sign the APK and it does not activate renderer hooks.
+The installable package lives in [geode-mod](geode-mod/README.md) and is built by
+[the Geode Android64 workflow](.github/workflows/geode-android64.yml). It is intended to be installed through Geode without APK patching, resigning, or root access. The current package adds settings access to both gameplay Pause and Editor Pause while leaving the original renderer untouched.
 
 ## Inspect the exact target game library
 
-Before attempting renderer hooks, inspect the `libcocos2dcpp.so` extracted from
-the user's exact Geometry Dash 2.2081 ARM64 APK:
+Before attempting native renderer hooks, inspect the `libcocos2dcpp.so` extracted from the exact Geometry Dash 2.2081 ARM64 APK:
 
 ```bash
 python3 tools/inspect_target_elf.py /path/to/libcocos2dcpp.so
 ```
 
-The tool validates ELF64 little-endian AArch64 shared-library format and lists exported
-dynamic symbols whose names mention the Cocos2d node, sprite, batch-node, or texture-atlas
-classes. A stripped library may not expose these names. Reported values are ELF symbol
-values, not runtime hook addresses, and do not establish that a function is safe to hook.
+Reported ELF addresses are not runtime addresses and do not establish that a function is safe to hook.
 
+## Native integration status
 
-## Passive telemetry control
-
-The passive hook measurements are enabled by default. Native loaders can use
-`bismuth_set_passive_telemetry_enabled(0)` to skip timing and observer work
-during a lower-overhead comparison, then restore it with `(1)`. This leaves
-the safety-checked pass-through hooks installed and does not alter the game's
-original rendering behavior. See
-[docs/performance-telemetry.md](docs/performance-telemetry.md) for details.
-
-
-## Asynchronous GPU timing
-
-An opt-in `GL_EXT_disjoint_timer_query` ring can measure GPU execution time
-inside the original texture-atlas draw call. It uses four query objects, polls
-results without blocking, discards disjoint samples, and publishes last/mean/
-p95/p99 values through `BismuthGpuTiming`. Enable it with
-`bismuth_set_gpu_timing_enabled(1)`; it remains off by default. This measures
-atlas-draw GPU time, not whole-frame GPU time or display presentation. It has
-not yet been tested on a physical Android device, and no in-game settings panel
-is claimed yet. See [docs/gpu-timing.md](docs/gpu-timing.md).
+The repository retains a C ABI and experimental GLES backend for a future controlled native integration. The current Geode package does not activate those hooks or claim live telemetry. The experimental GPU draw bridge remains disabled.

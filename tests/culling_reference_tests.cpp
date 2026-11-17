@@ -15,8 +15,6 @@
 #include <vector>
 using namespace bismuth;
 int main() {
-    // A null observer acquisition must never underflow the active callback
-    // count; a successful acquisition must release exactly one reference.
     std::atomic<std::uint32_t> activeObserverCallbacks{0u};
     releaseObserverCallback(activeObserverCallbacks, nullptr);
     assert(activeObserverCallbacks.load(std::memory_order_relaxed) == 0u);
@@ -24,7 +22,6 @@ int main() {
     releaseObserverCallback(activeObserverCallbacks, reinterpret_cast<void*>(1));
     assert(activeObserverCallbacks.load(std::memory_order_relaxed) == 0u);
 
-    // Passive telemetry can be toggled without touching the original draw path.
     TelemetryGate telemetryGate;
     assert(telemetryGate.enabled());
     telemetryGate.setEnabled(false);
@@ -32,7 +29,6 @@ int main() {
     telemetryGate.setEnabled(true);
     assert(telemetryGate.enabled());
 
-    // Geometric SSBO growth: preserve capacity, double gradually, and clamp.
     assert(nextWorkgroupCapacity(0u, 1u, 128u) == 1u);
     assert(nextWorkgroupCapacity(1u, 2u, 128u) == 2u);
     assert(nextWorkgroupCapacity(2u, 3u, 128u) == 4u);
@@ -78,7 +74,6 @@ int main() {
     auto invalidView = cullStable(candidates, Rect{nan, 0, 100, 100});
     assert(invalidView.visibleIndices.empty());
 
-    // Target-verified 2.2081 atlas EBO pattern, preserving slot order.
     std::vector<std::uint16_t> elements;
     assert(buildAtlasElementIndices16({2u, 0u, 1u}, 3u, elements));
     assert((elements == std::vector<std::uint16_t>{
@@ -110,8 +105,7 @@ int main() {
     assert(makeIndexedDrawCommand(0u, command));
     assert(command.count == 0u && command.instanceCount == 0u);
     assert(!makeIndexedDrawCommand(kAtlasMaxQuads16 + 1u, command));
-    // Atlas revision tracking: structural mutations invalidate slot maps;
-    // in-place quad writes invalidate derived quad data but not slot identity.
+
     AtlasRevisionTracker revisions;
     const AtlasRevision initialRevision = revisions.snapshot();
     assert(revisions.slotMappingCurrent(initialRevision));
@@ -126,28 +120,42 @@ int main() {
     const AtlasRevision afterStructure = revisions.snapshot();
     assert(revisions.slotMappingCurrent(afterStructure));
     assert(revisions.quadDataCurrent(afterStructure));
-    // Verified target layout reader: count metadata is sampled without a
-    // per-child traversal, and invalid/null layouts fail closed.
-    std::array<std::uint8_t, bismuth::target_layout::kBatchNodeChildrenArrayOffset + sizeof(void*)> fakeBatch{};
-    std::array<std::uint8_t, bismuth::target_layout::kArrayCountOffset + sizeof(std::uint32_t)> fakeChildren{};
-    const void* fakeChildrenPointer = fakeChildren.data();
-    std::memcpy(fakeBatch.data() + bismuth::target_layout::kBatchNodeChildrenArrayOffset,
-                &fakeChildrenPointer, sizeof(fakeChildrenPointer));
+
+    // Target 2.2081 layout: node +0xd0 -> CCArray object, +0x38 -> _ccArray,
+    // then _ccArray +0x00 contains the element count.
+    std::array<std::uint8_t,
+        bismuth::target_layout::kBatchNodeChildrenArrayObjectOffset + sizeof(void*)> fakeBatch{};
+    std::array<std::uint8_t,
+        bismuth::target_layout::kCCArrayDataOffset + sizeof(void*)> fakeArrayObject{};
+    std::array<std::uint8_t,
+        bismuth::target_layout::kArrayCountOffset + sizeof(std::uint32_t)> fakeArrayData{};
+    const void* fakeArrayObjectPointer = fakeArrayObject.data();
+    const void* fakeArrayDataPointer = fakeArrayData.data();
+    std::memcpy(fakeBatch.data() + bismuth::target_layout::kBatchNodeChildrenArrayObjectOffset,
+                &fakeArrayObjectPointer, sizeof(fakeArrayObjectPointer));
+    std::memcpy(fakeArrayObject.data() + bismuth::target_layout::kCCArrayDataOffset,
+                &fakeArrayDataPointer, sizeof(fakeArrayDataPointer));
     const std::uint32_t fakeChildCount = 321u;
-    std::memcpy(fakeChildren.data() + bismuth::target_layout::kArrayCountOffset,
+    std::memcpy(fakeArrayData.data() + bismuth::target_layout::kArrayCountOffset,
                 &fakeChildCount, sizeof(fakeChildCount));
     std::uint32_t observedChildren = 0;
     assert(bismuth::target_layout::readBatchChildCount(fakeBatch.data(), observedChildren));
     assert(observedChildren == fakeChildCount);
     assert(!bismuth::target_layout::readBatchChildCount(nullptr, observedChildren));
     assert(observedChildren == 0u);
+
+    const void* nullArrayData = nullptr;
+    std::memcpy(fakeArrayObject.data() + bismuth::target_layout::kCCArrayDataOffset,
+                &nullArrayData, sizeof(nullArrayData));
+    assert(!bismuth::target_layout::readBatchChildCount(fakeBatch.data(), observedChildren));
+    std::memcpy(fakeArrayObject.data() + bismuth::target_layout::kCCArrayDataOffset,
+                &fakeArrayDataPointer, sizeof(fakeArrayDataPointer));
     const std::uint32_t impossibleChildCount =
         bismuth::target_layout::kMaxObservedBatchChildren + 1u;
-    std::memcpy(fakeChildren.data() + bismuth::target_layout::kArrayCountOffset,
+    std::memcpy(fakeArrayData.data() + bismuth::target_layout::kArrayCountOffset,
                 &impossibleChildCount, sizeof(impossibleChildCount));
     assert(!bismuth::target_layout::readBatchChildCount(fakeBatch.data(), observedChildren));
 
-    // Passive per-frame telemetry is allocation-free and resets at frame start.
     AtlasObservationCounters observation;
     observation.beginFrame();
     observation.recordBatchDraw(12u, 1200u);
@@ -174,8 +182,7 @@ int main() {
     assert(cleared.batchDrawCalls == 0u && cleared.uploadedQuads == 0u &&
            cleared.batchDrawCpuNsTotal == 0u && cleared.batchDrawCpuNsMax == 0u &&
            cleared.batchDrawChildrenTotal == 0u);
-    // Frame interval window: deterministic monotonic timestamps, bounded rolling
-    // samples, nearest-rank percentiles, and rejection of backwards time.
+
     FrameIntervalWindow frameWindow;
     assert(frameWindow.recordFrameStart(1000000000ull));
     assert(frameWindow.snapshot().sampleCount == 0u);
@@ -192,7 +199,6 @@ int main() {
     assert(frameStats.p99IntervalNs == 17000000ull);
     frameWindow.reset();
     assert(frameWindow.snapshot().sampleCount == 0u);
-    // The rolling window remains bounded and drops the oldest interval.
     assert(frameWindow.recordFrameStart(0u));
     for (std::uint64_t i = 1u; i <= FrameIntervalWindow::kWindowSize + 1u; ++i)
         assert(frameWindow.recordFrameStart(i * 1000000ull));
@@ -209,7 +215,7 @@ int main() {
     assert(frameObserver.snapshot().frameIntervals.sampleCount == 1u);
     AtlasPassiveObserver passive;
     const AtlasRevision passiveStart = passive.revision();
-    passive.recordQuadWrite(false); // failed original operation: no invalidation
+    passive.recordQuadWrite(false);
     assert(passive.quadDataCurrent(passiveStart));
     passive.recordQuadWrite(true);
     assert(passive.slotMappingCurrent(passiveStart));

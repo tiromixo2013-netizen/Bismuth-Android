@@ -9,8 +9,28 @@
 #include <dobby.h>
 #include <dlfcn.h>
 #include "bismuth/gles31_culler.hpp"
+
+// Geode's Android CCGL header aliases these GLES entry points to OES names.
+// Temporarily remove those aliases while parsing GLES 3.1 declarations.
+#pragma push_macro("glBindVertexArray")
+#pragma push_macro("glDeleteVertexArrays")
+#pragma push_macro("glGenVertexArrays")
+#pragma push_macro("glBindVertexArrayOES")
+#pragma push_macro("glDeleteVertexArraysOES")
+#pragma push_macro("glGenVertexArraysOES")
+#undef glBindVertexArray
+#undef glDeleteVertexArrays
+#undef glGenVertexArrays
+#undef glBindVertexArrayOES
+#undef glDeleteVertexArraysOES
+#undef glGenVertexArraysOES
 #include <GLES3/gl31.h>
-#include <EGL/egl.h>
+#pragma pop_macro("glGenVertexArraysOES")
+#pragma pop_macro("glDeleteVertexArraysOES")
+#pragma pop_macro("glBindVertexArrayOES")
+#pragma pop_macro("glGenVertexArrays")
+#pragma pop_macro("glDeleteVertexArrays")
+#pragma pop_macro("glBindVertexArray")
 #if defined(BISMUTH_ENABLE_ATRACE)
 #include <android/trace.h>
 #endif
@@ -38,7 +58,6 @@ constexpr char kBatchDrawSymbol[] = "_ZN7cocos2d17CCSpriteBatchNode4drawEv";
 constexpr char kUpdateQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10updateQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
 constexpr char kDrawNumberOfQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas17drawNumberOfQuadsEjj";
 constexpr char kRemoveAllQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas14removeAllQuadsEv";
-constexpr char kResizeCapacitySymbol[] = "_ZN7cocos2d14CCTextureAtlas14resizeCapacityEj";
 constexpr char kInsertQuadSymbol[] = "_ZN7cocos2d14CCTextureAtlas10insertQuadEPNS_19_ccV3F_C4B_T2F_QuadEj";
 constexpr char kInsertQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas11insertQuadsEPNS_19_ccV3F_C4B_T2F_QuadEjj";
 constexpr char kInsertQuadFromIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas19insertQuadFromIndexEjj";
@@ -54,7 +73,6 @@ using BatchDrawFn = void (*)(void*);
 using UpdateQuadFn = void (*)(void*, void*, unsigned int);
 using DrawNumberOfQuadsFn = void (*)(void*, unsigned int, unsigned int);
 using RemoveAllQuadsFn = void (*)(void*);
-using ResizeCapacityFn = bool (*)(void*, unsigned int);
 using InsertQuadFn = void (*)(void*, void*, unsigned int);
 using InsertQuadsFn = void (*)(void*, void*, unsigned int, unsigned int);
 using TwoIndexFn = void (*)(void*, unsigned int, unsigned int);
@@ -62,14 +80,12 @@ using OneIndexFn = void (*)(void*, unsigned int);
 using ThreeIndexFn = void (*)(void*, unsigned int, unsigned int, unsigned int);
 using IncreaseQuadsFn = void (*)(void*, unsigned int);
 using GlDrawElementsFn = void (*)(GLenum, GLsizei, GLenum, const void*);
-using EglSwapBuffersFn = EGLBoolean (*)(EGLDisplay, EGLSurface);
 
 SpriteUpdateTransformFn g_originalSpriteUpdateTransform = nullptr;
 BatchDrawFn g_originalBatchDraw = nullptr;
 UpdateQuadFn g_originalUpdateQuad = nullptr;
 DrawNumberOfQuadsFn g_originalDrawNumberOfQuads = nullptr;
 RemoveAllQuadsFn g_originalRemoveAllQuads = nullptr;
-ResizeCapacityFn g_originalResizeCapacity = nullptr;
 InsertQuadFn g_originalInsertQuad = nullptr;
 InsertQuadsFn g_originalInsertQuads = nullptr;
 TwoIndexFn g_originalInsertQuadFromIndex = nullptr;
@@ -79,8 +95,6 @@ ThreeIndexFn g_originalMoveQuadsThree = nullptr;
 TwoIndexFn g_originalMoveQuadsTwo = nullptr;
 IncreaseQuadsFn g_originalIncreaseTotalQuads = nullptr;
 GlDrawElementsFn g_originalGlDrawElements = nullptr;
-EglSwapBuffersFn g_originalEglSwapBuffers = nullptr;
-bool g_eglSwapBuffersHooked = false;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
 std::atomic<bool> g_gpuTimingEnabled{false};
 GlesGpuTimerQuery g_gpuTimerQuery{};
@@ -121,7 +135,6 @@ bool g_updateQuadHooked = false;
 bool g_drawNumberOfQuadsHooked = false;
 bool g_batchDrawHooked = false;
 bool g_removeAllQuadsHooked = false;
-bool g_resizeCapacityHooked = false;
 bool g_insertQuadHooked = false;
 bool g_insertQuadsHooked = false;
 bool g_insertQuadFromIndexHooked = false;
@@ -214,24 +227,6 @@ AtlasPassiveObserver* acquireObserver() noexcept {
 
 void releaseObserver(AtlasPassiveObserver* observer) noexcept {
     releaseObserverCallback(g_activeCallbacks, observer);
-}
-
-EGLBoolean hookedEglSwapBuffers(EGLDisplay display, EGLSurface surface) {
-    if (!g_passiveTelemetryGate.enabled())
-        return g_originalEglSwapBuffers
-            ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
-    // This timestamp marks the app's EGL buffer-submission boundary, not the
-    // physical display presentation time or GPU completion.
-    AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) {
-        const auto now = std::chrono::steady_clock::now().time_since_epoch();
-        const auto monotonicNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
-        if (monotonicNs > 0)
-            observer->recordFrameStart(static_cast<std::uint64_t>(monotonicNs));
-    }
-    releaseObserver(observer);
-    return g_originalEglSwapBuffers
-        ? g_originalEglSwapBuffers(display, surface) : EGL_FALSE;
 }
 
 void hookedBatchDraw(void* self) {
@@ -469,24 +464,6 @@ bool ensureGpuDrawElementsHook() noexcept {
     return true;
 }
 
-bool hookedResizeCapacity(void* self, unsigned int requestedCapacity) {
-    if (!g_passiveTelemetryGate.enabled())
-        return g_originalResizeCapacity
-            ? g_originalResizeCapacity(self, requestedCapacity) : false;
-    std::uint32_t oldCapacity = 0;
-    if (self) std::memcpy(&oldCapacity, static_cast<const std::uint8_t*>(self) + 0x50,
-                          sizeof(oldCapacity));
-    const bool result = g_originalResizeCapacity
-        ? g_originalResizeCapacity(self, requestedCapacity) : false;
-    // A failed allocation can partially tear down atlas storage. Invalidate
-    // whenever a different capacity was requested, even if result is false.
-    if (oldCapacity != requestedCapacity) {
-        AtlasPassiveObserver* observer = acquireObserver();
-        if (observer) observer->recordStructuralMutation(true);
-        releaseObserver(observer);
-    }
-    return result;
-}
 
 } // namespace
 
@@ -522,7 +499,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* updateQuad = dlsym(RTLD_DEFAULT, kUpdateQuadSymbol);
     void* drawNumberOfQuads = dlsym(RTLD_DEFAULT, kDrawNumberOfQuadsSymbol);
     void* removeAllQuads = dlsym(RTLD_DEFAULT, kRemoveAllQuadsSymbol);
-    void* resizeCapacity = dlsym(RTLD_DEFAULT, kResizeCapacitySymbol);
     void* insertQuad = dlsym(RTLD_DEFAULT, kInsertQuadSymbol);
     void* insertQuads = dlsym(RTLD_DEFAULT, kInsertQuadsSymbol);
     void* insertQuadFromIndex = dlsym(RTLD_DEFAULT, kInsertQuadFromIndexSymbol);
@@ -537,7 +513,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         !symbolBelongsToTarget(updateQuad, module.path) ||
         !symbolBelongsToTarget(drawNumberOfQuads, module.path) ||
         !symbolBelongsToTarget(removeAllQuads, module.path) ||
-        !symbolBelongsToTarget(resizeCapacity, module.path) ||
         !symbolBelongsToTarget(insertQuad, module.path) ||
         !symbolBelongsToTarget(insertQuads, module.path) ||
         !symbolBelongsToTarget(insertQuadFromIndex, module.path) ||
@@ -610,17 +585,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         g_removeAllQuadsHooked = true;
     }
 
-    if (!g_resizeCapacityHooked) {
-        if (DobbyHook(resizeCapacity, reinterpret_cast<void*>(hookedResizeCapacity),
-                      reinterpret_cast<void**>(&g_originalResizeCapacity)) != 0 ||
-            !g_originalResizeCapacity) {
-            g_originalResizeCapacity = nullptr;
-            if (error) *error = "Dobby failed to install the CCTextureAtlas::resizeCapacity observer";
-            return false;
-        }
-        g_resizeCapacityHooked = true;
-    }
-
     if (!g_insertQuadHooked) {
         if (DobbyHook(insertQuad, reinterpret_cast<void*>(hookedInsertQuad),
                       reinterpret_cast<void**>(&g_originalInsertQuad)) != 0 || !g_originalInsertQuad) {
@@ -684,23 +648,6 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_increaseTotalQuadsHooked = true;
-    }
-
-    // Optional frame cadence hook: sample at EGL swap submission. Failure is
-    // non-fatal; all original Cocos drawing and observer hooks remain intact.
-    if (!g_eglSwapBuffersHooked) {
-        void* eglSwapBuffers = dlsym(RTLD_DEFAULT, "eglSwapBuffers");
-        Dl_info eglInfo{};
-        if (eglSwapBuffers && dladdr(eglSwapBuffers, &eglInfo) && eglInfo.dli_fname &&
-            std::strcmp(basenameOf(eglInfo.dli_fname), "libEGL.so") == 0) {
-            if (DobbyHook(eglSwapBuffers, reinterpret_cast<void*>(hookedEglSwapBuffers),
-                          reinterpret_cast<void**>(&g_originalEglSwapBuffers)) == 0 &&
-                g_originalEglSwapBuffers) {
-                g_eglSwapBuffersHooked = true;
-            } else {
-                g_originalEglSwapBuffers = nullptr;
-            }
-        }
     }
 
     g_observer.store(observer, std::memory_order_release);

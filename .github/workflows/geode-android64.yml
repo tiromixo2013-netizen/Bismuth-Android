@@ -1,0 +1,30 @@
+name: Build Bismuth Geode Android64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/geode-pause-ui
+  pull_request:
+
+jobs:
+  build:
+    name: Android64 Geode package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Geode mod
+        id: build
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          path: geode-mod
+          target: Android64
+          combine: true
+      - name: Upload installable Geode package
+        uses: actions/upload-artifact@v4
+        with:
+          name: bismuth-android64-geode
+          path: ${{ steps.build.outputs.build-output }}
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,20 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "android": "2.2081"
+  },
+  "id": "bismuth.android",
+  "name": "Bismuth Android",
+  "version": "0.9.1",
+  "developer": "Bismuth Project",
+  "description": "Android ARM64 settings UI and experimental rendering research for Geometry Dash 2.2081.",
+  "tags": ["performance", "utility"],
+  "settings": {
+    "diagnostics": {
+      "type": "bool",
+      "name": "Diagnostic logging",
+      "description": "Write Bismuth safe-mode initialization information to the Geode log.",
+      "default": true
+    }
+  }
+}
