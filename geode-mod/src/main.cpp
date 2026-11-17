@@ -2,6 +2,7 @@
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/CCTextureAtlas.hpp>
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,10 @@ std::size_t g_frameIntervalCount = 0;
 std::size_t g_frameIntervalCursor = 0;
 std::size_t g_updateCount = 0;
 std::size_t g_hitchCount = 0;
+std::uint64_t g_atlasDrawCalls = 0;
+std::uint64_t g_atlasDrawCpuNs = 0;
+std::uint64_t g_lastAtlasDrawCalls = 0;
+std::uint64_t g_lastAtlasDrawCpuNs = 0;
 float g_hudRefreshAccumulator = 0.f;
 float g_cachedP50Ms = 0.f;
 float g_cachedP95Ms = 0.f;
@@ -139,7 +144,7 @@ void syncHud(CCNode* layer) {
     if (!g_bismuthHud) createHud(layer);
 }
 
-void updateHud(float dt, double updateCpuMs) {
+void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::uint64_t atlasDrawCpuNs) {
     if (!g_bismuthHud) return;
 
     if (std::isfinite(updateCpuMs) && updateCpuMs >= 0.0 && updateCpuMs < 10000.0) {
@@ -180,11 +185,15 @@ void updateHud(float dt, double updateCpuMs) {
                 "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
                 "Cadence: %s\n"
                 "Hitches >33.3ms: %zu | Samples: %zu/120\n"
+                "Atlas draw calls: %llu | Atlas draw CPU: %.3f ms\\n"
+                "Atlas draw calls: %llu | Atlas draw CPU: %.3f ms\\n"
                 "Process RSS: %s",
                 updateHz, frameMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
-                graph.c_str(), g_hitchCount, g_frameIntervalCount, rssText);
+                graph.c_str(), g_hitchCount, g_frameIntervalCount,
+                static_cast<unsigned long long>(atlasDrawCalls),
+                static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
         } else {
             std::snprintf(text, sizeof(text),
                 "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
@@ -196,13 +205,18 @@ void updateHud(float dt, double updateCpuMs) {
                 updateHz, frameMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
-                g_hitchCount, g_frameIntervalCount, rssText);
+                g_hitchCount, g_frameIntervalCount,
+                static_cast<unsigned long long>(atlasDrawCalls),
+                static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
         }
     } else {
         std::snprintf(text, sizeof(text),
             "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
-            "PlayLayer::update CPU: %.3f ms | RSS %s",
-            updateHz, frameMs, updateCpuMs, rssText);
+            "PlayLayer::update CPU: %.3f ms\\n"
+            "Atlas draws: %llu | draw CPU: %.3f ms | RSS %s",
+            updateHz, frameMs, updateCpuMs,
+            static_cast<unsigned long long>(atlasDrawCalls),
+            static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
     }
     g_bismuthHud->setString(text);
 }
@@ -226,17 +240,34 @@ class $modify(BismuthPlayLayer, PlayLayer) {
     }
 
     void update(float dt) {
+        // Consume the draw telemetry collected during the previous render pass,
+        // then start a fresh window for the upcoming render pass.
+        g_lastAtlasDrawCalls = g_atlasDrawCalls;
+        g_lastAtlasDrawCpuNs = g_atlasDrawCpuNs;
+        g_atlasDrawCalls = 0;
+        g_atlasDrawCpuNs = 0;
         const auto start = std::chrono::steady_clock::now();
         PlayLayer::update(dt);
         const auto end = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
         syncHud(this);
-        updateHud(dt, elapsed);
+        updateHud(dt, elapsed, g_lastAtlasDrawCalls, g_lastAtlasDrawCpuNs);
     }
 
     void onExit() {
         g_bismuthHud = nullptr;
         PlayLayer::onExit();
+    }
+};
+
+class $modify(BismuthTextureAtlas, CCTextureAtlas) {
+    void drawNumberOfQuads(unsigned int numberOfQuads, unsigned int start) {
+        const auto begin = std::chrono::steady_clock::now();
+        CCTextureAtlas::drawNumberOfQuads(numberOfQuads, start);
+        const auto end = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count();
+        ++g_atlasDrawCalls;
+        if (elapsed > 0) g_atlasDrawCpuNs += static_cast<std::uint64_t>(elapsed);
     }
 };
 
