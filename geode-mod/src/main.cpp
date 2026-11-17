@@ -9,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <dirent.h>
@@ -282,7 +283,7 @@ void updateHud(float dt, double updateCpuMs) {
     std::snprintf(text, sizeof(text),
         "BISMUTH | FPS %.1f | AVG %.1f | TARGET %.0f\n"
         "1%% LOW* %.1f | FRAME %.2f ms\n"
-        "CPU %s | GPU %s\n"
+        "GAME CPU %s | GPU %s\n"
         "CPU TEMP %s | GPU TEMP %s\n"
         "BATCH %llu | CHILDREN %llu | DRAW CPU %.2f ms",
         loopFps, averageFps, targetFps > 0.0 ? targetFps : 0.0,
