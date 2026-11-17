@@ -164,48 +164,44 @@ void updateHud(float dt, double updateCpuMs) {
     g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 0.25f);
 
     const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
-    const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
-    const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
-
+    const float updateHz = frameMs > 0.f ? 1000.f / frameMs : 0.f;
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
     char text[768];
+    const char* rssText = processRssMb >= 0.0
+        ? (std::to_string(processRssMb) + " MB").c_str() : "N/A";
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
             const auto graph = makeFrameGraph();
             std::snprintf(text, sizeof(text),
-                "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
-                "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
-                "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
-                "Cadence: %s\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Process RSS: %s | GPU usage/time: N/A\n"
-                "Draw calls: N/A",
-                loopFps, frameMs, lowFpsEstimate, updateCpuMs,
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
+                "PlayLayer::update CPU: %.3f ms\\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
+                "Cadence: %s\\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
+                "Process RSS: %s",
+                updateHz, frameMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
-                graph.c_str(), g_hitchCount, g_frameIntervalCount,
-                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
+                graph.c_str(), g_hitchCount, g_frameIntervalCount, rssText);
         } else {
             std::snprintf(text, sizeof(text),
-                "BISMUTH | GAME LOOP %.1f FPS | %.2f ms\n"
-                "1%% LOW* %.1f FPS | CPU update %.3f ms\n"
-                "Frame p50/p95/p99: %.2f / %.2f / %.2f ms\n"
-                "CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
-                "Process RSS: %s | GPU usage/time: N/A | Draw calls: N/A",
-                loopFps, frameMs, lowFpsEstimate, updateCpuMs,
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
+                "PlayLayer::update CPU: %.3f ms\\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
+                "Process RSS: %s",
+                updateHz, frameMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
                 g_cpuP50Ms, g_cpuP95Ms, g_cpuP99Ms,
-                g_hitchCount, g_frameIntervalCount,
-                processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
+                g_hitchCount, g_frameIntervalCount, rssText);
         }
     } else {
         std::snprintf(text, sizeof(text),
-            "BISMUTH | LOOP %.1f FPS | %.2f ms\n"
-            "1%% LOW* %.1f | CPU update %.3f ms | RSS %s",
-            loopFps, frameMs, lowFpsEstimate, updateCpuMs,
-            processRssMb >= 0.0 ? (std::to_string(processRssMb) + " MB").c_str() : "N/A");
+            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
+            "PlayLayer::update CPU: %.3f ms | RSS %s",
+            updateHz, frameMs, updateCpuMs, rssText);
     }
     g_bismuthHud->setString(text);
 }
