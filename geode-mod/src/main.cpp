@@ -1,7 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
-#include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/CCNode.hpp>
 #include <Geode/modify/CCSpriteBatchNode.hpp>
 
 #include <algorithm>
@@ -622,13 +622,15 @@ private:
     double m_lastWorkMs = 0.0;
 };
 
-class $modify(BismuthPlayLayer, PlayLayer) {
-    // Start from PlayLayer::onEnter: this lifecycle callback is reached as soon
-    // as the gameplay layer joins the scene. Do not depend on the transition-finished
-    // callback, which was not creating the HUD on the target Android build.
-    // We still avoid PlayLayer::postUpdate because it previously appeared in a crash stack.
+class $modify(BismuthSceneNode, CCNode) {
     void onEnter() {
-        PlayLayer::onEnter();
+        CCNode::onEnter();
+
+        // PlayLayer inherits this lifecycle method from CCNode. Hook the class
+        // that actually owns the method, then filter to gameplay layers only.
+        auto* playLayer = typeinfo_cast<PlayLayer*>(this);
+        if (!playLayer) return;
+
         g_frameIntervalsMs.fill(0.f);
         g_cpuUpdateMs.fill(0.0);
         g_cpuSampleCount = 0;
@@ -655,15 +657,16 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         } else {
             log::error("Bismuth: no running scene for HUD controller.");
         }
-        log::info("Bismuth: PlayLayer entered; scene-owned HUD controller initialized.");
+        log::info("Bismuth: PlayLayer entered through CCNode lifecycle hook; scene-owned HUD controller initialized.");
     }
 
     void onExit() {
-        closeShizukuSocket();
-        PlayLayer::onExit();
+        if (typeinfo_cast<PlayLayer*>(this)) {
+            closeShizukuSocket();
+        }
+        CCNode::onExit();
     }
 };
-
 class $modify(BismuthSpriteBatchNode, CCSpriteBatchNode) {
     void draw() {
         if (!Mod::get()->getSettingValue<bool>("renderer-telemetry")) {
