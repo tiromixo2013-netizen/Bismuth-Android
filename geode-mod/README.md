@@ -42,7 +42,11 @@ The first device test should use one repeatable level and verify:
 5. opening and closing settings returns to the same pause screen;
 6. opening level selection and scrolling pages does not crash.
 
-The HUD currently measures game-loop update cadence and the wall-clock duration
-of `PlayLayer::update`. It does not measure display-present FPS, GPU usage,
-whole-frame GPU time, RAM usage, or draw calls. No performance gain is claimed
-without on-device A/B testing.
+The HUD measures game-loop update cadence, `PlayLayer::update` wall time,
+process RSS, process CPU time, best-effort GPU busy counters when the kernel
+exposes them, and SpriteBatch draw invocations/child counts/CPU submission time.
+It does not measure display-present FPS, whole-frame GPU time, or raw GLES draw
+calls. The optional Shizuku Companion bridge adds best-effort whole-device CPU,
+GPU busy, thermal-zone, and system RAM readings over localhost. Missing or
+inaccessible sensors remain N/A. No performance gain is claimed without
+on-device A/B testing.
