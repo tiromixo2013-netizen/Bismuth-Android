@@ -180,13 +180,13 @@ void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
             const auto graph = makeFrameGraph();
             std::snprintf(text, sizeof(text),
-                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
-                "PlayLayer::update CPU: %.3f ms\\n"
-                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
-                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
-                "Cadence: %s\\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
-                "Atlas draw calls: %llu | draw CPU: %.3f ms\\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+                "PlayLayer::update CPU: %.3f ms\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
+                "Cadence: %s\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
+                "Atlas draw calls: %llu | draw CPU: %.3f ms\n"
                 "Process RSS: %s",
                 updateHz, updateIntervalMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
@@ -196,12 +196,12 @@ void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::
                 static_cast<double>(atlasDrawCpuNs) / 1.0e6, rssText);
         } else {
             std::snprintf(text, sizeof(text),
-                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
-                "PlayLayer::update CPU: %.3f ms\\n"
-                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\\n"
-                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\\n"
-                "Hitches >33.3ms: %zu | Samples: %zu/120\\n"
-                "Atlas draw calls: %llu | draw CPU: %.3f ms\\n"
+                "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+                "PlayLayer::update CPU: %.3f ms\n"
+                "Frame interval p50/p95/p99: %.2f / %.2f / %.2f ms\n"
+                "Update CPU p50/p95/p99: %.3f / %.3f / %.3f ms\n"
+                "Hitches >33.3ms: %zu | Samples: %zu/120\n"
+                "Atlas draw calls: %llu | draw CPU: %.3f ms\n"
                 "Process RSS: %s",
                 updateHz, updateIntervalMs, updateCpuMs,
                 g_cachedP50Ms, g_cachedP95Ms, g_cachedP99Ms,
@@ -212,8 +212,8 @@ void updateHud(float dt, double updateCpuMs, std::uint64_t atlasDrawCalls, std::
         }
     } else {
         std::snprintf(text, sizeof(text),
-            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\\n"
-            "PlayLayer::update CPU: %.3f ms\\n"
+            "BISMUTH | UPDATE CADENCE %.1f Hz | %.2f ms\n"
+            "PlayLayer::update CPU: %.3f ms\n"
             "Atlas draws: %llu | draw CPU: %.3f ms | RSS %s",
             updateHz, updateIntervalMs, updateCpuMs,
             static_cast<unsigned long long>(atlasDrawCalls),
