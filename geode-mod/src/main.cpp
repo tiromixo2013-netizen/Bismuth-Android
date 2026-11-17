@@ -234,6 +234,8 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_frameIntervalCursor = 0;
         g_updateCount = 0;
         g_hitchCount = 0;
+        g_atlasDrawCalls = g_atlasDrawCpuNs = 0;
+        g_lastAtlasDrawCalls = g_lastAtlasDrawCpuNs = 0;
         g_hudRefreshAccumulator = 0.f;
         g_cachedP50Ms = g_cachedP95Ms = g_cachedP99Ms = 0.f;
         createHud(this);
