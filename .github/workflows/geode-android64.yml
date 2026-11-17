@@ -43,21 +43,26 @@ jobs:
           unzip -p "$PACKAGE" "$LIB_PATH" > /tmp/bismuth-geode.so
           strings /tmp/bismuth-geode.so > /tmp/bismuth-geode.strings
           nm -C /tmp/bismuth-geode.so > /tmp/bismuth-geode.symbols
-          for marker in 'BISMUTH HUD ACTIVE' 'SHIZUKU ' 'CONNECTED' 'connect timeout after 3s'; do
+          for marker in 'BISMUTH' 'performance-overlay' 'SHIZUKU ' 'CONNECTED' 'connect timeout after 3s'; do
             if ! grep -Fq "$marker" /tmp/bismuth-geode.strings; then
               echo "::error::Missing expected binary string: $marker"
               exit 1
             fi
             echo "PASS string: $marker"
           done
-          for symbol in 'AsStaticFunction_onEnterTransitionDidFinish' 'AsStaticFunction_postUpdate' 'createHud'; do
+          for symbol in 'AsStaticFunction_onEnterTransitionDidFinish' 'BismuthHudController::update' 'createHud'; do
             if ! grep -Fq "$symbol" /tmp/bismuth-geode.symbols; then
               echo "::error::Missing expected binary symbol: $symbol"
               exit 1
             fi
             echo "PASS symbol: $symbol"
           done
-          echo "Packaged Geode binary contains HUD, PlayLayer frame hooks, and Shizuku bridge client."
+          if grep -Fq 'AsStaticFunction_postUpdate' /tmp/bismuth-geode.symbols; then
+            echo "::error::Unsafe PlayLayer::postUpdate hook is still present."
+            exit 1
+          fi
+          echo "PASS: no PlayLayer::postUpdate hook in packaged binary."
+          echo "Packaged Geode binary contains the scene-owned HUD controller and Shizuku bridge client."
       - name: Upload installable Geode package
         uses: actions/upload-artifact@v4
         with:
