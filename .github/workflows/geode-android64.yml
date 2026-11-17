@@ -30,13 +30,7 @@ jobs:
             PACKAGE="$(find "$PACKAGE" -maxdepth 2 -type f -name '*.geode' -print -quit)"
           fi
           test -n "$PACKAGE" && test -f "$PACKAGE"
-          LIB_PATH="$(unzip -Z1 "$PACKAGE" | grep -E '\\.so        uses: actions/upload-artifact@v4
-        with:
-          name: bismuth-android64-geode
-          path: ${{ steps.build.outputs.build-output }}
-          if-no-files-found: error
-          retention-days: 14
- | head -n 1)"
+          LIB_PATH="$(unzip -Z1 "$PACKAGE" | grep -E '\\.so$' | head -n 1)"
           test -n "$LIB_PATH"
           unzip -p "$PACKAGE" "$LIB_PATH" > /tmp/bismuth-geode.so
           strings /tmp/bismuth-geode.so > /tmp/bismuth-geode.strings
