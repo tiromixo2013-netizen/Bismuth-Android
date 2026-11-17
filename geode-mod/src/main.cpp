@@ -430,7 +430,7 @@ void updateHud(float dt, double updateCpuMs) {
     if (Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) {
         out << "SHIZUKU " << (g_shizukuConnected ? "CONNECTED" : "WAITING");
         if (!g_shizukuConnected && !g_shizukuLastError.empty()) out << " (" << g_shizukuLastError << ")";
-        out << "\\n";
+        out << "\n";
     }
     out.precision(2);
     out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\n";
