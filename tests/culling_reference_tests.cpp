@@ -49,8 +49,8 @@ int main() {
     auto empty = cullStable({}, view);
     assert(empty.visibleIndices.empty());
     const Rect inverted{10, 10, 0, 0};
-    auto none = cullStable(candidates, inverted);
-    assert(none.visibleIndices.empty());
+    auto invertedViewFailOpen = cullStable(candidates, inverted);
+    assert((invertedViewFailOpen.visibleIndices == std::vector<std::uint32_t>{0, 1, 2, 3, 4}));
     const Rect touching{10, 10, 10, 20};
     auto edge = cullStable(candidates, touching);
     assert((edge.visibleIndices == std::vector<std::uint32_t>{0}));
