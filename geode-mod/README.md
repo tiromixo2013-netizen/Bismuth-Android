@@ -12,21 +12,21 @@ Bismuth Android is packaged as a Geode mod for Geometry Dash 2.2081 ARM64.
 
 ## Current safety state
 
-- Cocos hooks are build-ID gated to the inspected Geometry Dash 2.2081 ARM64 library.
-- Passive telemetry can be enabled or disabled from the settings popup.
-- Asynchronous GPU timing is optional and only runs when the driver exposes the required timer-query extension.
-- The experimental all-visible GPU EBO bridge is hard-disabled. It is not real sprite culling and is not exposed as a user toggle.
-- The original Cocos draw path remains active.
+- The Geode package runs in safe mode: it does not install Cocos2d/Dobby hooks from the Geode Loaded event.
+- This avoids patching renderer methods after the game render path may already be active or while other mods own hooks on those methods.
+- The original Cocos renderer remains untouched.
+- Native hook and GPU-timing code remains experimental and is not activated by this Geode package.
+- The experimental all-visible GPU EBO bridge remains disabled and is not real sprite culling.
 
 ## Build
 
-The repository workflow builds the Android64 .geode artifact using the Geode SDK. Install that artifact through Geode and restart Geometry Dash.
+The repository workflow builds the Android64 .geode artifact using the Geode SDK. Install that artifact through Geode.
 
 The first device test should use one repeatable level and verify:
 1. the mod loads without a Geode crash report;
-2. the icon appears below Better Visuals in gameplay Pause;
+2. the icon appears in gameplay Pause;
 3. the icon appears in Editor Pause;
 4. opening and closing settings returns to the same pause screen;
-5. telemetry toggles do not affect gameplay behavior.
+5. opening level selection and scrolling pages does not crash.
 
-No FPS gain or full GPU-culling activation is claimed before these checks.
+No FPS gain, live telemetry, or GPU-culling activation is claimed in safe mode.
