@@ -59,6 +59,7 @@ double sampleProcessCpuPercent() {
         if (i == 12) { try { system = std::stoull(token); } catch (...) { return -1.0; } }
     }
     const auto now = std::chrono::steady_clock::now();
+    if (previousTicks == 0) { previousTicks = user + system; previousTime = now; return -1.0; }
     const double seconds = std::chrono::duration<double>(now - previousTime).count();
     const long hz = ::sysconf(_SC_CLK_TCK);
     const long cores = ::sysconf(_SC_NPROCESSORS_ONLN);
@@ -75,7 +76,9 @@ double sampleKgslGpuPercent() {
     std::ifstream input("/sys/class/kgsl/kgsl-3d0/gpubusy");
     if (!input) return -1.0;
     std::uint64_t busy = 0, total = 0;
-    if (!(input >> busy >> total) || total <= previousTotal || busy < previousBusy) return -1.0;
+    if (!(input >> busy >> total)) return -1.0;
+    if (previousTotal == 0) { previousBusy = busy; previousTotal = total; return -1.0; }
+    if (total <= previousTotal || busy < previousBusy) return -1.0;
     const auto deltaBusy = busy - previousBusy;
     const auto deltaTotal = total - previousTotal;
     previousBusy = busy;
