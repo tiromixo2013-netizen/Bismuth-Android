@@ -22,6 +22,7 @@ using namespace geode::prelude;
 
 namespace {
 CCLabelTTF* g_bismuthHud = nullptr;
+std::string g_lastHudText;
 std::array<float, 120> g_frameIntervalsMs{};
 std::array<double, 120> g_cpuUpdateMs{};
 std::size_t g_cpuSampleCount = 0;
@@ -72,19 +73,35 @@ double sampleProcessCpuPercent() {
     return std::clamp((static_cast<double>(delta) / hz) / seconds / cores * 100.0, 0.0, 100.0);
 }
 
-double sampleKgslGpuPercent() {
-    static std::uint64_t previousBusy = 0, previousTotal = 0;
-    std::ifstream input("/sys/class/kgsl/kgsl-3d0/gpubusy");
-    if (!input) return -1.0;
+double sampleGpuPercent() {
+    // Prefer cumulative devfreq counters exposed by Mali drivers. Never treat GPU frequency as load.
+    static std::string path;
+    static std::uint64_t lastBusy = 0, lastTotal = 0;
+    if (path.empty()) {
+        DIR* dir = ::opendir("/sys/class/devfreq");
+        if (!dir) return -1.0;
+        while (auto* entry = ::readdir(dir)) {
+            if (entry->d_name[0] == '.') continue;
+            const std::string base = std::string("/sys/class/devfreq/") + entry->d_name + "/";
+            std::ifstream nameFile(base + "name");
+            std::string name; std::getline(nameFile, name);
+            name += " "; name += entry->d_name;
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            if (name.find("gpu") == std::string::npos && name.find("mali") == std::string::npos) continue;
+            std::ifstream b(base + "busy_time"), t(base + "total_time");
+            std::uint64_t bv = 0, tv = 0;
+            if (b >> bv && t >> tv) { path = base; break; }
+        }
+        ::closedir(dir);
+    }
+    if (path.empty()) return -1.0;
+    std::ifstream b(path + "busy_time"), t(path + "total_time");
     std::uint64_t busy = 0, total = 0;
-    if (!(input >> busy >> total)) return -1.0;
-    if (previousTotal == 0) { previousBusy = busy; previousTotal = total; return -1.0; }
-    if (total <= previousTotal || busy < previousBusy) return -1.0;
-    const auto deltaBusy = busy - previousBusy;
-    const auto deltaTotal = total - previousTotal;
-    previousBusy = busy;
-    previousTotal = total;
-    return std::clamp(static_cast<double>(deltaBusy) / static_cast<double>(deltaTotal) * 100.0, 0.0, 100.0);
+    if (!(b >> busy) || !(t >> total)) { path.clear(); lastBusy = lastTotal = 0; return -1.0; }
+    if (!lastTotal || total <= lastTotal || busy < lastBusy) { lastBusy = busy; lastTotal = total; return -1.0; }
+    const auto db = busy - lastBusy, dt = total - lastTotal;
+    lastBusy = busy; lastTotal = total;
+    return dt ? std::clamp(static_cast<double>(db) / static_cast<double>(dt) * 100.0, 0.0, 100.0) : -1.0;
 }
 
 double readThermalZoneC(const char* wanted) {
@@ -199,21 +216,23 @@ void createHud() {
     }
 
     // Use TTF rather than BMFont to avoid the previously observed BMFont batch-child crash path.
-    auto label = CCLabelTTF::create("BISMUTH | waiting for gameplay samples", "Arial", 10.f);
+    auto label = CCLabelTTF::create("BISMUTH | PERFORMANCE MONITOR STARTING", "Roboto", 12.f);
     if (!label) {
         log::warn("Bismuth: could not create the standalone telemetry label.");
         return;
     }
 
     label->setAnchorPoint({0.f, 1.f});
-    label->setOpacity(235);
-    label->setColor({220, 240, 255});
+    label->setOpacity(250);
+    label->setColor({255, 255, 255});
     const auto size = CCDirector::sharedDirector()->getWinSize();
-    label->setPosition({8.f, size.height - 8.f});
-    label->setZOrder(20000);
+    label->setPosition({12.f, size.height - 12.f});
+    label->setScale(1.08f);
+    label->setZOrder(30000);
     label->setID("bismuth.android/live-hud"_spr);
     layer->addChild(label, 20000);
     g_bismuthHud = label;
+    g_lastHudText.clear();
 }
 
 void syncHud() {
@@ -222,6 +241,7 @@ void syncHud() {
         if (g_bismuthHud) {
             auto* oldHud = g_bismuthHud;
             g_bismuthHud = nullptr;
+            g_lastHudText.clear();
             oldHud->removeFromParentAndCleanup(true);
         }
         return;
@@ -232,6 +252,7 @@ void syncHud() {
     } else if (runningScene && g_bismuthHud->getParent() != runningScene) {
         auto* oldHud = g_bismuthHud;
         g_bismuthHud = nullptr;
+        g_lastHudText.clear();
         oldHud->removeFromParentAndCleanup(true);
         createHud();
     }
@@ -271,30 +292,45 @@ void updateHud(float dt, double updateCpuMs) {
     }
     const double averageFps = averageFrameMs > 0.0 ? 1000.0 / averageFrameMs : 0.0;
     const double targetFps = readEngineTargetFps();
-    const double gameCpuPercent = sampleProcessCpuPercent();
-    const double gpuPercent = sampleKgslGpuPercent();
-    const double cpuTempC = readThermalZoneC("cpu");
-    const double gpuTempC = readThermalZoneC("gpu");
+    const double gameCpuPercent = Mod::get()->getSettingValue<bool>("monitor-cpu") ? sampleProcessCpuPercent() : -1.0;
+    const double gpuPercent = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
+    const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
+    const double cpuTempC = thermalEnabled ? readThermalZoneC("cpu") : -1.0;
+    const double gpuTempC = thermalEnabled ? readThermalZoneC("gpu") : -1.0;
 
 
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
+    const bool advanced = Mod::get()->getSettingValue<bool>("hud-advanced");
+    const bool graphEnabled = advanced && Mod::get()->getSettingValue<bool>("hud-graph");
+    const bool rendererEnabled = Mod::get()->getSettingValue<bool>("renderer-telemetry");
     const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
-    char text[768];
-    std::snprintf(text, sizeof(text),
-        "BISMUTH | FPS %.1f | AVG %.1f | TARGET %.0f\n"
-        "1%% LOW* %.1f | FRAME %.2f ms\n"
-        "GAME CPU %s | GPU %s\n"
-        "CPU TEMP %s | GPU TEMP %s\n"
-        "BATCH %llu | CHILDREN %llu | DRAW CPU %.2f ms",
-        loopFps, averageFps, targetFps > 0.0 ? targetFps : 0.0,
-        lowFpsEstimate, frameMs,
-        gameCpuPercent >= 0.0 ? (std::to_string(gameCpuPercent) + "%").c_str() : "N/A",
-        gpuPercent >= 0.0 ? (std::to_string(gpuPercent) + "%").c_str() : "N/A",
-        cpuTempC >= 0.0 ? (std::to_string(cpuTempC) + " C").c_str() : "N/A",
-        gpuTempC >= 0.0 ? (std::to_string(gpuTempC) + " C").c_str() : "N/A",
-        static_cast<unsigned long long>(g_batchDrawCallsLast),
-        static_cast<unsigned long long>(g_batchChildrenLast), batchCpuMs);
-    g_bismuthHud->setString(text);
+    std::ostringstream out;
+    out.setf(std::ios::fixed);
+    out.precision(1);
+    out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\\n";
+    out.precision(2);
+    out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\\n";
+    if (Mod::get()->getSettingValue<bool>("monitor-cpu")) out << "GAME CPU " << (gameCpuPercent >= 0.0 ? std::to_string(gameCpuPercent) + "%" : "N/A") << " | ";
+    if (Mod::get()->getSettingValue<bool>("monitor-gpu")) out << "GPU " << (gpuPercent >= 0.0 ? std::to_string(gpuPercent) + "%" : "N/A");
+    out << "\\n";
+    if (thermalEnabled) out << "CPU TEMP " << (cpuTempC >= 0.0 ? std::to_string(cpuTempC) + " C" : "N/A")
+        << " | GPU TEMP " << (gpuTempC >= 0.0 ? std::to_string(gpuTempC) + " C" : "N/A") << "\\n";
+    if (advanced) {
+        out.precision(2);
+        out << "FRAME P50/P95/P99 " << g_cachedP50Ms << " / " << g_cachedP95Ms << " / " << g_cachedP99Ms
+            << " ms | UPDATE CPU P95 " << g_cpuP95Ms << " ms\\n";
+        out << "HITCHES " << g_hitchCount << " | SAMPLES " << g_frameIntervalCount << "\\n";
+    }
+    if (graphEnabled) out << "FRAME GRAPH " << makeFrameGraph() << "\\n";
+    if (processRssMb >= 0.0) { out.precision(1); out << "PROCESS RSS " << processRssMb << " MB\\n"; }
+    if (rendererEnabled) {
+        out.precision(2);
+        out << "SPRITEBATCH " << g_batchDrawCallsLast << " | CHILDREN " << g_batchChildrenLast
+            << " | CPU SUBMIT " << batchCpuMs << " ms\\n";
+    }
+    out << "GPU = DEVFREQ BUSY/TOTAL IF EXPOSED | *LOW IS P99 ESTIMATE";
+    const std::string hudText = out.str();
+    if (hudText != g_lastHudText) { g_bismuthHud->setString(hudText.c_str()); g_lastHudText = hudText; }
 }
 }
 
@@ -341,6 +377,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         if (g_bismuthHud) {
             auto* oldHud = g_bismuthHud;
             g_bismuthHud = nullptr;
+            g_lastHudText.clear();
             oldHud->removeFromParentAndCleanup(true);
         }
         PlayLayer::onExit();
