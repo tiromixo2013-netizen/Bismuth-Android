@@ -188,7 +188,7 @@ void updateHud(float dt, double updateCpuMs) {
     const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
 
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
-    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;\n    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
+    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
     char text[768];
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
