@@ -35,22 +35,29 @@ public final class UserService extends IBismuthUserService.Stub {
     private void serve() {
         try (ServerSocket server = new ServerSocket()) {
             server.setReuseAddress(true);
-            server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 1);
+            server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4);
             server.setSoTimeout(1000);
+            status = "Bridge listening on 127.0.0.1:" + PORT + " (uid " + Os.getuid() + "); waiting for Bismuth";
+            Log.i(TAG, status);
             while (running) {
                 try (Socket client = server.accept()) {
                     client.setTcpNoDelay(true);
                     BufferedWriter out = new BufferedWriter(new OutputStreamWriter(client.getOutputStream()));
                     status = "Bismuth connected; streaming shell telemetry";
+                    Log.i(TAG, status);
                     while (running && !client.isClosed()) {
                         out.write(snapshotCsv()); out.newLine(); out.flush();
                         Thread.sleep(500);
                     }
+                    if (running) status = "Bismuth client closed; bridge listening on 127.0.0.1:" + PORT;
                 } catch (SocketTimeoutException ignored) {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt(); break;
                 } catch (IOException e) {
-                    if (running) Log.w(TAG, "Client disconnected", e);
+                    if (running) {
+                        status = "Client I/O error: " + e.getClass().getSimpleName() + "; bridge listening";
+                        Log.w(TAG, status, e);
+                    }
                 }
             }
         } catch (Exception e) {
