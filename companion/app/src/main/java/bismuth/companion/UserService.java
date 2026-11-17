@@ -20,9 +20,9 @@ public final class UserService extends IBismuthUserService.Stub {
     @Override public synchronized void startBridge() {
         if (running) return;
         running = true;
+        status = "Bridge starting on 127.0.0.1:" + PORT + " (uid " + Os.getuid() + ")";
         worker = new Thread(this::serve, "BismuthTelemetryBridge");
         worker.start();
-        status = "Bridge starting on 127.0.0.1:" + PORT + " (uid " + Os.getuid() + ")";
     }
     @Override public synchronized void stopBridge() {
         running = false;
