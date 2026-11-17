@@ -39,6 +39,7 @@ class BridgeContractTests(unittest.TestCase):
         self.assertIn("validPercent(values[0])", GEODE)
         self.assertIn("g_shizukuSnapshot = ShizukuSnapshot{}", GEODE)
         self.assertIn("telemetry timeout after 2s", GEODE)
+        self.assertIn("fcntl: ", GEODE)
 
     def test_bridge_worker_cannot_survive_stop_restart(self):
         self.assertIn("private volatile int generation", USER_SERVICE)
