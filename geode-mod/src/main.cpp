@@ -61,6 +61,7 @@ int g_shizukuSocket = -1;
 bool g_shizukuConnecting = false;
 bool g_shizukuConnected = false;
 std::string g_shizukuRx;
+std::string g_shizukuLastError;
 auto g_shizukuNextPoll = std::chrono::steady_clock::time_point{};
 
 void closeShizukuSocket() {
@@ -86,6 +87,7 @@ void parseShizukuLine(const std::string& line) {
     g_shizukuSnapshot.ramUsedMb = values[4];
     g_shizukuSnapshot.ramTotalMb = values[5];
     g_shizukuConnected = true;
+    g_shizukuLastError.clear();
 }
 
 void pollShizukuBridge() {
@@ -96,7 +98,7 @@ void pollShizukuBridge() {
 
     if (g_shizukuSocket < 0) {
         const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0) return;
+        if (fd < 0) { g_shizukuLastError = std::string("socket: ") + std::strerror(errno); return; }
         const int flags = ::fcntl(fd, F_GETFL, 0);
         ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
         sockaddr_in address{};
@@ -104,7 +106,10 @@ void pollShizukuBridge() {
         address.sin_port = htons(38471);
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         const int result = ::connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
-        if (result < 0 && errno != EINPROGRESS) { ::close(fd); return; }
+        if (result < 0 && errno != EINPROGRESS) {
+            g_shizukuLastError = std::string("connect: ") + std::strerror(errno);
+            ::close(fd); return;
+        }
         g_shizukuSocket = fd;
         g_shizukuConnecting = result < 0;
     }
@@ -114,8 +119,11 @@ void pollShizukuBridge() {
         if (::poll(&pfd, 1, 0) <= 0) return;
         int error = 0; socklen_t length = sizeof(error);
         if (::getsockopt(g_shizukuSocket, SOL_SOCKET, SO_ERROR, &error, &length) < 0 || error) {
+            const int code = error ? error : errno;
+            g_shizukuLastError = std::string("connect: ") + std::strerror(code);
             closeShizukuSocket(); return;
         }
+        g_shizukuLastError.clear();
         g_shizukuConnecting = false;
     }
 
@@ -419,7 +427,11 @@ void updateHud(float dt, double updateCpuMs) {
     out.setf(std::ios::fixed);
     out.precision(1);
     out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\n";
-    if (Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) out << "SHIZUKU " << (g_shizukuConnected ? "CONNECTED" : "WAITING") << "\n";
+    if (Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) {
+        out << "SHIZUKU " << (g_shizukuConnected ? "CONNECTED" : "WAITING");
+        if (!g_shizukuConnected && !g_shizukuLastError.empty()) out << " (" << g_shizukuLastError << ")";
+        out << "\\n";
+    }
     out.precision(2);
     out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\n";
     if (Mod::get()->getSettingValue<bool>("monitor-cpu")) {
