@@ -207,34 +207,46 @@ std::string makeFrameGraph() {
     return graph;
 }
 
+CCNode* getHudHost(CCNode* gameplayLayer) {
+    // The running scene is the stable top-level overlay host. PlayLayer children can
+    // be covered or transformed by gameplay rendering/camera nodes on some GD builds.
+    auto* director = CCDirector::sharedDirector();
+    auto* scene = director ? director->getRunningScene() : nullptr;
+    return scene ? static_cast<CCNode*>(scene) : gameplayLayer;
+}
+
 void createHud(CCNode* gameplayLayer) {
     if (!Mod::get()->getSettingValue<bool>("hud-enabled")) return;
-    auto* layer = gameplayLayer;
-    if (!layer) {
-        log::warn("Bismuth: gameplay layer unavailable; HUD creation deferred.");
+    auto* host = getHudHost(gameplayLayer);
+    if (!host) {
+        log::warn("Bismuth: no running scene/PlayLayer host; HUD creation deferred.");
         return;
     }
 
-    // Use TTF rather than BMFont to avoid the previously observed BMFont batch-child crash path.
-    auto label = CCLabelTTF::create("BISMUTH | PERFORMANCE MONITOR STARTING", "Roboto", 12.f);
+    // Keep the overlay independent of the gameplay node tree so it renders above
+    // the game layer and survives child-order changes during a level.
+    auto* director = CCDirector::sharedDirector();
+    if (!director) return;
+    auto label = CCLabelTTF::create("BISMUTH HUD ACTIVE | COLLECTING FRAME SAMPLES...", "Roboto", 13.f);
     if (!label) {
-        log::warn("Bismuth: could not create the standalone telemetry label.");
+        log::error("Bismuth: CCLabelTTF creation failed; live HUD cannot be displayed.");
         return;
     }
 
     label->setAnchorPoint({0.f, 1.f});
-    label->setOpacity(250);
+    label->setOpacity(255);
     label->setColor({255, 255, 255});
-    const auto size = CCDirector::sharedDirector()->getWinSize();
-    label->setPosition({12.f, size.height - 12.f});
-    label->setScale(1.08f);
+    const auto size = director->getWinSize();
+    label->setPosition({14.f, size.height - 16.f});
+    label->setScale(1.0f);
     label->setVisible(true);
-    label->setZOrder(100000);
+    label->setZOrder(1000000);
     label->setID("bismuth.android/live-hud"_spr);
-    layer->addChild(label, 100000);
-    log::info("Bismuth: live HUD attached directly to PlayLayer.");
+    host->addChild(label, 1000000);
     g_bismuthHud = label;
     g_lastHudText.clear();
+    log::info("Bismuth: live HUD attached to running scene (host={}, visible={}).",
+        static_cast<void*>(host), label->isVisible());
 }
 
 void syncHud(CCNode* gameplayLayer) {
@@ -248,9 +260,10 @@ void syncHud(CCNode* gameplayLayer) {
         }
         return;
     }
+    auto* host = getHudHost(gameplayLayer);
     if (!g_bismuthHud) {
         createHud(gameplayLayer);
-    } else if (gameplayLayer && g_bismuthHud->getParent() != gameplayLayer) {
+    } else if (host && g_bismuthHud->getParent() != host) {
         auto* oldHud = g_bismuthHud;
         g_bismuthHud = nullptr;
         g_lastHudText.clear();
@@ -355,7 +368,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_batchDrawCallsLast = g_batchChildrenLast = g_batchCpuNsLast = 0;
         g_loggedFirstPlayUpdate = false;
         createHud(this);
-        log::info("Bismuth: PlayLayer entered; gameplay telemetry hook is active.");
+        log::info("Bismuth: PlayLayer entered; gameplay telemetry hook is active and scene HUD requested.");
     }
 
     void update(float dt) {
@@ -369,7 +382,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         syncHud(this);
         if (!g_loggedFirstPlayUpdate) {
             g_loggedFirstPlayUpdate = true;
-            log::info("Bismuth: first PlayLayer::update received (dt={:.4f}s).", dt);
+            log::info("Bismuth: first PlayLayer::update received (dt={:.4f}s, hud={}).", dt, static_cast<void*>(g_bismuthHud));
         }
         updateHud(dt, elapsed);
     }
