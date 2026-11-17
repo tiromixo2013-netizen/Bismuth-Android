@@ -596,11 +596,12 @@ private:
 };
 
 class $modify(BismuthPlayLayer, PlayLayer) {
-    // Do not hook PlayLayer::postUpdate: other installed mods chain this callback,
-    // and Bismuth's previous hook was present in the reported SIGSEGV stack.
-    // A scene-owned scheduled controller samples independently of that hook chain.
-    void onEnterTransitionDidFinish() {
-        PlayLayer::onEnterTransitionDidFinish();
+    // Start from PlayLayer::onEnter: this lifecycle callback is reached as soon
+    // as the gameplay layer joins the scene. Do not depend on the transition-finished
+    // callback, which was not creating the HUD on the target Android build.
+    // We still avoid PlayLayer::postUpdate because it previously appeared in a crash stack.
+    void onEnter() {
+        PlayLayer::onEnter();
         g_frameIntervalsMs.fill(0.f);
         g_cpuUpdateMs.fill(0.0);
         g_cpuSampleCount = 0;
@@ -627,7 +628,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         } else {
             log::error("Bismuth: no running scene for HUD controller.");
         }
-        log::info("Bismuth: PlayLayer transition finished; scene-owned HUD controller initialized.");
+        log::info("Bismuth: PlayLayer entered; scene-owned HUD controller initialized.");
     }
 
     void onExit() {
@@ -679,7 +680,7 @@ class $modify(BismuthEditorPauseLayer, EditorPauseLayer) {
 
 $on_mod(Loaded) {
     // Register safe Geode-level telemetry hooks; no draw replacement or GPU culling is enabled.
-    log::info("Bismuth: Geode mod loaded; PlayLayer transition lifecycle and CCSpriteBatchNode draw observer are registered.");
+    log::info("Bismuth: Geode mod loaded; PlayLayer entry lifecycle and CCSpriteBatchNode draw observer are registered.");
     if (Mod::get()->getSettingValue<bool>("diagnostics")) {
         log::info("Bismuth diagnostics: HUD reports PlayLayer cadence, CPU update time, SpriteBatch draw invocations/children and batch CPU submission time. GPU execution time and raw GL draw calls are not measured.");
     }
