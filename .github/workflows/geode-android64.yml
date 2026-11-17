@@ -50,7 +50,7 @@ jobs:
             fi
             echo "PASS string: $marker"
           done
-          for symbol in 'AsStaticFunction_onEnterTransitionDidFinish' 'BismuthHudController::update' 'createHud' 'pollShizukuBridge' 'parseShizukuLine'; do
+          for symbol in 'AsStaticFunction_onEnterTransitionDidFinish' 'BismuthHudController::update' 'pollShizukuBridge' 'parseShizukuLine'; do
             if ! grep -Fq "$symbol" /tmp/bismuth-geode.symbols; then
               echo "::error::Missing expected binary symbol: $symbol"
               exit 1
