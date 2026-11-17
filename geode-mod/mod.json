@@ -5,9 +5,9 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "developer": "Bismuth Project",
-  "description": "Android ARM64 settings UI and experimental rendering research for Geometry Dash 2.2081.",
+  "description": "Android ARM64 in-game performance monitor for Geometry Dash 2.2081, with conservative safe-mode renderer diagnostics.",
   "tags": [
     "performance",
     "utility"
@@ -22,25 +22,25 @@
     "hud-enabled": {
       "type": "bool",
       "name": "Live performance HUD",
-      "description": "Show a compact top-left in-game HUD. Values are limited to metrics actually measured by this package.",
+      "description": "Show the top-left in-game monitor. Metrics are limited to values measured by this package.",
       "default": true
     },
     "hud-advanced": {
       "type": "bool",
       "name": "Advanced monitor",
-      "description": "Show frame interval percentiles, estimated 1% low, CPU update time, hitch count, and sample count.",
-      "default": false
+      "description": "Show frame-interval percentiles, estimated 1% low, CPU update wall time, hitch count, and sample count.",
+      "default": true
     },
     "hud-graph": {
       "type": "bool",
       "name": "Frame cadence graph",
-      "description": "Show a compact rolling 24-sample frame-cadence graph in Advanced Monitor.",
+      "description": "Show the rolling 24-sample frame-cadence graph in Advanced Monitor.",
       "default": true
     },
     "hud-memory": {
       "type": "bool",
       "name": "Process memory (RSS)",
-      "description": "Show resident process memory from /proc/self/statm. This is total process RSS, not native-heap-only memory.",
+      "description": "Show resident memory for the whole game process from /proc/self/statm; this is not native-heap-only memory.",
       "default": true
     }
   }
