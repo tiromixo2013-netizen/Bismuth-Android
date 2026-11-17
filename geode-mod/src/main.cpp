@@ -352,7 +352,7 @@ void createHud(CCNode* controller) {
     controller->addChild(panel, 1);
     g_bismuthHudPanel = panel;
 
-    auto title = CCLabelTTF::create("BISMUTH  •  LIVE", "Arial", 8.f);
+    auto title = CCLabelTTF::create("BISMUTH  •  LIVE", "Roboto", 8.f);
     if (title) {
         title->setAnchorPoint({0.f, 0.5f});
         title->setPosition({8.f, 84.f});
@@ -555,6 +555,9 @@ public:
 
     void update(float dt) override {
         const auto start = std::chrono::steady_clock::now();
+        g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
+        g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
+        g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
         pollShizukuBridge();
         syncHud(this);
         if (g_bismuthHudPanel) updateHud(dt, m_lastWorkMs);
