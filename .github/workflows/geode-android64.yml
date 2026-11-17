@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feature/geode-pause-ui
+      - feature/shizuku-companion-telemetry
   pull_request:
 
 jobs:
@@ -21,6 +22,29 @@ jobs:
           path: geode-mod
           target: Android64
           combine: true
+      - name: Audit packaged HUD and Shizuku client
+        shell: bash
+        run: |
+          PACKAGE="${{ steps.build.outputs.build-output }}"
+          if [ -d "$PACKAGE" ]; then
+            PACKAGE="$(find "$PACKAGE" -maxdepth 2 -type f -name '*.geode' -print -quit)"
+          fi
+          test -n "$PACKAGE" && test -f "$PACKAGE"
+          LIB_PATH="$(unzip -Z1 "$PACKAGE" | grep -E '\\.so        uses: actions/upload-artifact@v4
+        with:
+          name: bismuth-android64-geode
+          path: ${{ steps.build.outputs.build-output }}
+          if-no-files-found: error
+          retention-days: 14
+ | head -n 1)"
+          test -n "$LIB_PATH"
+          unzip -p "$PACKAGE" "$LIB_PATH" > /tmp/bismuth-geode.so
+          strings /tmp/bismuth-geode.so > /tmp/bismuth-geode.strings
+          grep -Fq 'BISMUTH HUD ACTIVE' /tmp/bismuth-geode.strings
+          grep -Fq '127.0.0.1' /tmp/bismuth-geode.strings
+          grep -Fq '38471' /tmp/bismuth-geode.strings
+          grep -Fq 'SHIZUKU CONNECTED' /tmp/bismuth-geode.strings
+          echo "Packaged Geode binary contains HUD and loopback bridge client."
       - name: Upload installable Geode package
         uses: actions/upload-artifact@v4
         with:
