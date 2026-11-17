@@ -121,21 +121,114 @@ public final class UserService extends IBismuthUserService.Stub {
     private static String readText(String path) throws IOException {
         try(BufferedReader r=new BufferedReader(new FileReader(path))){return r.readLine();}
     }
+    // GPU sysfs differs between Mali driver generations and MediaTek kernel builds.
+    // Prefer a driver's already-computed percentage; fall back to devfreq time counters.
+    private static String previousGpuSource = "";
+    private static long previousGpuBusy, previousGpuTotal;
+
+    private static double readGpuPercent(String path) {
+        try {
+            String raw = readText(path).trim();
+            if (raw.isEmpty()) return -1;
+            String token = raw.split("\\s+")[0].replace("%", "");
+            double value = Double.parseDouble(token);
+            return (Double.isFinite(value) && value >= 0 && value <= 100) ? value : -1;
+        } catch (Exception ignored) { return -1; }
+    }
+
+    private static double gpuCounterLoad(File dir) {
+        File busyFile = new File(dir, "busy_time");
+        File totalFile = new File(dir, "total_time");
+        if (!busyFile.isFile() || !totalFile.isFile()) {
+            File governor = new File(dir, "governor");
+            busyFile = new File(governor, "busy_time");
+            totalFile = new File(governor, "total_time");
+        }
+        if (!busyFile.isFile() || !totalFile.isFile()) return -1;
+        long busy = readLong(busyFile.getPath()), total = readLong(totalFile.getPath());
+        if (busy < 0 || total <= 0) return -1;
+        String source = busyFile.getPath() + "|" + totalFile.getPath();
+        if (!source.equals(previousGpuSource)) {
+            previousGpuSource = source;
+            previousGpuBusy = busy;
+            previousGpuTotal = total;
+            return -1;
+        }
+        long pb = previousGpuBusy, pt = previousGpuTotal;
+        previousGpuBusy = busy;
+        previousGpuTotal = total;
+        if (pt <= 0 || total <= pt || busy < pb) return -1;
+        return Math.max(0, Math.min(100, (busy - pb) * 100.0 / (total - pt)));
+    }
+
     private static double gpuLoad() {
-        File[] dirs=new File("/sys/class/devfreq").listFiles(); if(dirs==null)return -1;
-        for(File d:dirs) try {
-            String n=d.getName().toLowerCase(Locale.ROOT);
-            File nf=new File(d,"name"); if(nf.isFile())n+=" "+readText(nf.getPath()).toLowerCase(Locale.ROOT);
-            if(!n.contains("gpu")&&!n.contains("mali"))continue;
-            long busy=readLong(new File(d,"busy_time").getPath()), total=readLong(new File(d,"total_time").getPath());
-            if(busy<0||total<=0)continue;
-            long pb=previousGpuBusy,pt=previousGpuTotal;previousGpuBusy=busy;previousGpuTotal=total;
-            if(pt==0||total<=pt||busy<pb)return -1;
-            return Math.max(0,Math.min(100,(busy-pb)*100.0/(total-pt)));
-        }catch(Exception ignored){}
+        // Common ARM Mali / MediaTek driver nodes. Availability and read permission
+        // are kernel-specific; an unreadable or non-percentage value remains N/A.
+        String[] direct = {
+            "/sys/class/misc/mali0/device/utilisation",
+            "/sys/class/misc/mali0/device/utilization",
+            "/sys/devices/platform/mali/utilisation",
+            "/sys/devices/platform/mali/utilization"
+        };
+        for (String path : direct) {
+            double value = readGpuPercent(path);
+            if (value >= 0) return value;
+        }
+
+        // Some MediaTek kernels expose a Mali devfreq node below the Mali device.
+        File maliDevfreq = new File("/sys/class/misc/mali0/device/devfreq");
+        File[] maliNodes = maliDevfreq.listFiles();
+        if (maliNodes != null) for (File node : maliNodes) {
+            double value = readGpuPercent(new File(node, "load").getPath());
+            if (value >= 0) return value;
+            value = readGpuPercent(new File(node, "utilisation").getPath());
+            if (value >= 0) return value;
+            value = gpuCounterLoad(node);
+            if (value >= 0) return value;
+        }
+
+        // Generic devfreq is used by many MediaTek Mali integrations, but counter
+        // files may live either at the device root or in its governor directory.
+        File[] dirs = new File("/sys/class/devfreq").listFiles();
+        if (dirs != null) for (File d : dirs) {
+            try {
+                String n = d.getName().toLowerCase(Locale.ROOT);
+                File nf = new File(d, "name");
+                if (nf.isFile()) n += " " + readText(nf.getPath()).toLowerCase(Locale.ROOT);
+                if (!n.contains("gpu") && !n.contains("mali")) continue;
+                double value = readGpuPercent(new File(d, "load").getPath());
+                if (value >= 0) return value;
+                value = readGpuPercent(new File(d, "utilisation").getPath());
+                if (value >= 0) return value;
+                value = readGpuPercent(new File(d, "utilization").getPath());
+                if (value >= 0) return value;
+                value = gpuCounterLoad(d);
+                if (value >= 0) return value;
+            } catch (Exception ignored) {}
+        }
+
+        // MediaTek commonly names the platform node with an address, e.g. *.mali.
+        File[] platform = new File("/sys/devices/platform").listFiles();
+        if (platform != null) for (File d : platform) {
+            String n = d.getName().toLowerCase(Locale.ROOT);
+            if (!n.contains("mali") && !n.contains("gpu")) continue;
+            for (String attr : new String[]{"utilisation", "utilization", "load"}) {
+                double value = readGpuPercent(new File(d, attr).getPath());
+                if (value >= 0) return value;
+            }
+            File devfreq = new File(d, "devfreq");
+            File[] nodes = devfreq.listFiles();
+            if (nodes != null) for (File node : nodes) {
+                for (String attr : new String[]{"load", "utilisation", "utilization"}) {
+                    double value = readGpuPercent(new File(node, attr).getPath());
+                    if (value >= 0) return value;
+                }
+                double value = gpuCounterLoad(node);
+                if (value >= 0) return value;
+            }
+        }
         return -1;
     }
-    private static long previousGpuBusy, previousGpuTotal;
     private static double temperature(String wanted) {
         File[] zones=new File("/sys/class/thermal").listFiles((d,n)->n.startsWith("thermal_zone"));
         if(zones==null)return -1; double hottest=-1;
