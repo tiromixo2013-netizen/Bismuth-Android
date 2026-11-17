@@ -369,15 +369,30 @@ std::string makeFrameGraph() {
     return graph;
 }
 
+void positionHudPanel() {
+    if (!g_bismuthHudPanel) return;
+    auto* director = CCDirector::sharedDirector();
+    if (!director) return;
+
+    // Use the active visible viewport, not the design/window size. This keeps
+    // the HUD inside the actual landscape viewport and respects viewport offsets.
+    const auto origin = director->getVisibleOrigin();
+    const auto visible = director->getVisibleSize();
+    g_bismuthHudPanel->setAnchorPoint({0.f, 1.f});
+    g_bismuthHudPanel->setPosition({
+        origin.x + 10.f,
+        origin.y + visible.height - 10.f
+    });
+}
+
 void createHud(CCNode* controller) {
     if (!Mod::get()->getSettingValue<bool>("hud-enabled") || !controller) return;
-    const auto size = CCDirector::sharedDirector()->getWinSize();
 
-    // Compact cool-white, high-contrast HUD pinned to the upper-left corner.
+    // Compact cool-white, high-contrast HUD pinned to the visible upper-left corner.
     auto panel = CCLayerColor::create({226, 239, 246, 244}, 210.f, 158.f);
     if (!panel) return;
     panel->setAnchorPoint({0.f, 1.f});
-    panel->setPosition({10.f, size.height - 10.f});
+    panel->setPosition(CCPointZero);
     panel->setID("bismuth.android/performance-overlay"_spr);
     controller->addChild(panel, 1);
     g_bismuthHudPanel = panel;
@@ -443,6 +458,8 @@ void syncHud(CCNode* controller) {
         return;
     }
     if (!g_bismuthHudPanel && controller) createHud(controller);
+    // Re-evaluate every frame so orientation/viewport changes cannot push it off-screen.
+    positionHudPanel();
 }
 
 void updateHud(float dt, double updateCpuMs) {
