@@ -77,16 +77,32 @@ void closeShizukuSocket() {
     g_shizukuConnecting = false;
     g_shizukuConnected = false;
     g_shizukuRx.clear();
+    // Never leave stale device telemetry visible after a disconnect or opt-out.
+    g_shizukuSnapshot = ShizukuSnapshot{};
 }
 
 void parseShizukuLine(const std::string& line) {
     std::istringstream in(line);
     std::array<double, 6> values{};
-    for (auto& value : values) {
+    for (std::size_t i = 0; i < values.size(); ++i) {
         std::string field;
         if (!std::getline(in, field, ',')) return;
-        try { value = std::stod(field); } catch (...) { return; }
+        try {
+            std::size_t parsed = 0;
+            values[i] = std::stod(field, &parsed);
+            if (parsed != field.size() || !std::isfinite(values[i])) return;
+        } catch (...) { return; }
     }
+    // Reject extra columns and impossible values; -1 is the protocol's N/A sentinel.
+    std::string extra;
+    if (std::getline(in, extra, ',')) return;
+    const auto validPercent = [](double v) { return v == -1.0 || (v >= 0.0 && v <= 100.0); };
+    const auto validTemp = [](double v) { return v == -1.0 || (v >= 0.0 && v <= 150.0); };
+    const auto validMemory = [](double v) { return v == -1.0 || v >= 0.0; };
+    if (!validPercent(values[0]) || !validPercent(values[1]) ||
+        !validTemp(values[2]) || !validTemp(values[3]) ||
+        !validMemory(values[4]) || !validMemory(values[5])) return;
+    if (values[4] >= 0.0 && values[5] >= 0.0 && values[4] > values[5]) return;
     g_shizukuSnapshot.deviceCpu = values[0];
     g_shizukuSnapshot.gpu = values[1];
     g_shizukuSnapshot.cpuTemp = values[2];
