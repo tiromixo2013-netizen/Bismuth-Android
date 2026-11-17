@@ -378,10 +378,15 @@ void positionHudPanel() {
     // the HUD inside the actual landscape viewport and respects viewport offsets.
     const auto origin = director->getVisibleOrigin();
     const auto visible = director->getVisibleSize();
-    g_bismuthHudPanel->setAnchorPoint({0.f, 1.f});
+    // Cocos2d node positions are measured from the anchor point. Use a
+    // bottom-left anchor and subtract the full panel height explicitly;
+    // relying on a top-left anchor here placed the panel above the viewport
+    // on some Android landscape viewports.
+    g_bismuthHudPanel->setAnchorPoint({0.f, 0.f});
+    const auto panelSize = g_bismuthHudPanel->getContentSize();
     g_bismuthHudPanel->setPosition({
         origin.x + 10.f,
-        origin.y + visible.height - 10.f
+        origin.y + visible.height - panelSize.height - 10.f
     });
 }
 
