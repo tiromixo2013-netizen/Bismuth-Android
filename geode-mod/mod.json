@@ -7,7 +7,7 @@
   "name": "Bismuth Android",
   "version": "0.9.5",
   "developer": "Bismuth Project",
-  "description": "Android ARM64 in-game performance monitor with frame analysis, process CPU, best-effort devfreq GPU, thermal and renderer telemetry.",
+  "description": "Android ARM64 performance monitor with a compact top-left HUD, scene-owned safe update controller, frame analysis, CPU, best-effort GPU, thermal and renderer telemetry.",
   "tags": [
     "performance",
     "utility"
@@ -22,13 +22,13 @@
     "hud-enabled": {
       "type": "bool",
       "name": "Live performance HUD",
-      "description": "Show the in-game top-left monitor with game-loop FPS, frame time, optional CPU/GPU usage and temperature, advanced frame percentiles, memory, and renderer CPU-submission counters.",
+      "description": "Show a compact translucent top-left overlay with prominent FPS, frame time, CPU/GPU usage bars and optional memory details.",
       "default": true
     },
     "hud-advanced": {
       "type": "bool",
       "name": "Advanced frame analysis",
-      "description": "Show frame P50/P95/P99, estimated 1% low, PlayLayer update CPU wall time P50/P95/P99, hitch count, and sample count. This is game-loop timing, not display-present FPS.",
+      "description": "Show frame P50/P95/P99, estimated 1% low, HUD controller CPU wall time P50/P95/P99, hitch count, and sample count. This is game-loop timing, not display-present FPS.",
       "default": true
     },
     "hud-graph": {
