@@ -5,7 +5,7 @@
   },
   "id": "bismuth.android",
   "name": "Bismuth Android",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "developer": "Bismuth Project",
   "description": "Android ARM64 performance monitor with a compact top-left HUD, scene-owned safe update controller, frame analysis, CPU, best-effort GPU, thermal and renderer telemetry.",
   "tags": [
