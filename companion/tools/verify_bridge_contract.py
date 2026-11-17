@@ -40,6 +40,13 @@ class BridgeContractTests(unittest.TestCase):
         self.assertIn("g_shizukuSnapshot = ShizukuSnapshot{}", GEODE)
         self.assertIn("telemetry timeout after 2s", GEODE)
 
+    def test_bridge_worker_cannot_survive_stop_restart(self):
+        self.assertIn("private volatile int generation", USER_SERVICE)
+        self.assertIn("final int runId = ++generation", USER_SERVICE)
+        self.assertIn("++generation; // Invalidate the old worker", USER_SERVICE)
+        self.assertIn("server.close()", USER_SERVICE)
+        self.assertIn("isCurrentRun(runId)", USER_SERVICE)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
