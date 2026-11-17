@@ -167,8 +167,9 @@ void updateHud(float dt, double updateCpuMs) {
     const float updateHz = frameMs > 0.f ? 1000.f / frameMs : 0.f;
     const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
     char text[768];
-    const char* rssText = processRssMb >= 0.0
-        ? (std::to_string(processRssMb) + " MB").c_str() : "N/A";
+    const std::string rssStorage = processRssMb >= 0.0
+        ? std::to_string(processRssMb) + " MB" : "N/A";
+    const char* rssText = rssStorage.c_str();
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
             const auto graph = makeFrameGraph();
