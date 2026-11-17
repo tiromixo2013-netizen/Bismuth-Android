@@ -63,6 +63,7 @@ bool g_shizukuConnected = false;
 std::string g_shizukuRx;
 std::string g_shizukuLastError;
 auto g_shizukuNextPoll = std::chrono::steady_clock::time_point{};
+auto g_shizukuConnectStarted = std::chrono::steady_clock::time_point{};
 
 void closeShizukuSocket() {
     if (g_shizukuSocket >= 0) ::close(g_shizukuSocket);
@@ -91,7 +92,10 @@ void parseShizukuLine(const std::string& line) {
 }
 
 void pollShizukuBridge() {
-    if (!Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) return;
+    if (!Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) {
+        if (g_shizukuSocket >= 0) closeShizukuSocket();
+        return;
+    }
     const auto now = std::chrono::steady_clock::now();
     if (now < g_shizukuNextPoll) return;
     g_shizukuNextPoll = now + std::chrono::milliseconds(250);
@@ -112,11 +116,25 @@ void pollShizukuBridge() {
         }
         g_shizukuSocket = fd;
         g_shizukuConnecting = result < 0;
+        g_shizukuConnectStarted = now;
+        if (!g_shizukuConnecting) g_shizukuLastError.clear();
     }
 
     if (g_shizukuConnecting) {
-        pollfd pfd{g_shizukuSocket, POLLOUT, 0};
-        if (::poll(&pfd, 1, 0) <= 0) return;
+        pollfd pfd{g_shizukuSocket, static_cast<short>(POLLOUT | POLLERR | POLLHUP), 0};
+        const int ready = ::poll(&pfd, 1, 0);
+        if (ready < 0) {
+            if (errno == EINTR) return;
+            g_shizukuLastError = std::string("poll: ") + std::strerror(errno);
+            closeShizukuSocket(); return;
+        }
+        if (ready == 0) {
+            if (now - g_shizukuConnectStarted > std::chrono::seconds(3)) {
+                g_shizukuLastError = "connect timeout after 3s";
+                closeShizukuSocket();
+            }
+            return;
+        }
         int error = 0; socklen_t length = sizeof(error);
         if (::getsockopt(g_shizukuSocket, SOL_SOCKET, SO_ERROR, &error, &length) < 0 || error) {
             const int code = error ? error : errno;
@@ -140,8 +158,13 @@ void pollShizukuBridge() {
             }
             continue;
         }
-        if (count == 0) closeShizukuSocket();
-        else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) closeShizukuSocket();
+        if (count == 0) {
+            closeShizukuSocket();
+            g_shizukuLastError = "server closed connection";
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+            g_shizukuLastError = std::string("recv: ") + std::strerror(errno);
+            closeShizukuSocket();
+        }
         break;
     }
 }
