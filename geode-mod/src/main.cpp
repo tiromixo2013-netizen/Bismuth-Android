@@ -307,26 +307,26 @@ void updateHud(float dt, double updateCpuMs) {
     std::ostringstream out;
     out.setf(std::ios::fixed);
     out.precision(1);
-    out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\\n";
+    out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\n";
     out.precision(2);
-    out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\\n";
+    out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\n";
     if (Mod::get()->getSettingValue<bool>("monitor-cpu")) out << "GAME CPU " << (gameCpuPercent >= 0.0 ? std::to_string(gameCpuPercent) + "%" : "N/A") << " | ";
     if (Mod::get()->getSettingValue<bool>("monitor-gpu")) out << "GPU " << (gpuPercent >= 0.0 ? std::to_string(gpuPercent) + "%" : "N/A");
-    out << "\\n";
+    out << "\n";
     if (thermalEnabled) out << "CPU TEMP " << (cpuTempC >= 0.0 ? std::to_string(cpuTempC) + " C" : "N/A")
-        << " | GPU TEMP " << (gpuTempC >= 0.0 ? std::to_string(gpuTempC) + " C" : "N/A") << "\\n";
+        << " | GPU TEMP " << (gpuTempC >= 0.0 ? std::to_string(gpuTempC) + " C" : "N/A") << "\n";
     if (advanced) {
         out.precision(2);
         out << "FRAME P50/P95/P99 " << g_cachedP50Ms << " / " << g_cachedP95Ms << " / " << g_cachedP99Ms
-            << " ms | UPDATE CPU P95 " << g_cpuP95Ms << " ms\\n";
-        out << "HITCHES " << g_hitchCount << " | SAMPLES " << g_frameIntervalCount << "\\n";
+            << " ms | UPDATE CPU P50/P95/P99 " << g_cpuP50Ms << " / " << g_cpuP95Ms << " / " << g_cpuP99Ms << " ms\n";
+        out << "HITCHES " << g_hitchCount << " | SAMPLES " << g_frameIntervalCount << "\n";
     }
-    if (graphEnabled) out << "FRAME GRAPH " << makeFrameGraph() << "\\n";
-    if (processRssMb >= 0.0) { out.precision(1); out << "PROCESS RSS " << processRssMb << " MB\\n"; }
+    if (graphEnabled) out << "FRAME GRAPH " << makeFrameGraph() << "\n";
+    if (processRssMb >= 0.0) { out.precision(1); out << "PROCESS RSS " << processRssMb << " MB\n"; }
     if (rendererEnabled) {
         out.precision(2);
         out << "SPRITEBATCH " << g_batchDrawCallsLast << " | CHILDREN " << g_batchChildrenLast
-            << " | CPU SUBMIT " << batchCpuMs << " ms\\n";
+            << " | CPU SUBMIT " << batchCpuMs << " ms\n";
     }
     out << "GPU = DEVFREQ BUSY/TOTAL IF EXPOSED | *LOW IS P99 ESTIMATE";
     const std::string hudText = out.str();
