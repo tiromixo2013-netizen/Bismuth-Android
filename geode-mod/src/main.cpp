@@ -402,7 +402,7 @@ void createHud(CCNode* controller) {
     g_bismuthAdvancedLabel = addLabel("P95 N/A  |  1% low N/A", 19.f, 7.f, {45, 65, 78});
     g_bismuthGraphLabel = addLabel("", 6.f, 6.f, {37, 94, 105});
 
-    auto makeBar = [&](float y, ccColor3B fillColor, CCLayerColor*& fill) {
+    auto makeBar = [&](float y, ccColor4B fillColor, CCLayerColor*& fill) {
         auto* bg = CCLayerColor::create({185, 202, 211, 255}, 194.f, 3.f);
         if (!bg) return;
         bg->setAnchorPoint({0.f, 0.5f});
