@@ -126,6 +126,19 @@ void createHud(CCNode* layer) {
     g_bismuthHud = label;
 }
 
+void syncHud(CCNode* layer) {
+    const bool enabled = Mod::get()->getSettingValue<bool>("hud-enabled");
+    if (!enabled) {
+        if (g_bismuthHud) {
+            auto* oldHud = g_bismuthHud;
+            g_bismuthHud = nullptr;
+            oldHud->removeFromParentAndCleanup(true);
+        }
+        return;
+    }
+    if (!g_bismuthHud) createHud(layer);
+}
+
 void updateHud(float dt, double updateCpuMs) {
     if (!g_bismuthHud) return;
 
@@ -220,6 +233,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         PlayLayer::update(dt);
         const auto end = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
+        syncHud(this);
         updateHud(dt, elapsed);
     }
 
