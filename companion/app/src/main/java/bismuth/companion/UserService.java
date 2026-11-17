@@ -12,6 +12,8 @@ public final class UserService extends IBismuthUserService.Stub {
     private static final String TAG = "BismuthShizuku";
     private static final int PORT = 38471;
     private volatile boolean running;
+    private volatile int generation;
+    private volatile ServerSocket serverSocket;
     private Thread worker;
     private volatile String status = "Shizuku service ready; bridge stopped";
     public UserService() {}
@@ -20,50 +22,80 @@ public final class UserService extends IBismuthUserService.Stub {
     @Override public synchronized void startBridge() {
         if (running) return;
         running = true;
+        final int runId = ++generation;
         status = "Bridge starting on 127.0.0.1:" + PORT + " (uid " + Os.getuid() + ")";
-        worker = new Thread(this::serve, "BismuthTelemetryBridge");
+        worker = new Thread(() -> serve(runId), "BismuthTelemetryBridge-" + runId);
         worker.start();
     }
     @Override public synchronized void stopBridge() {
         running = false;
+        ++generation; // Invalidate the old worker before a rapid restart can begin.
+        ServerSocket current = serverSocket;
+        serverSocket = null;
+        if (current != null) {
+            try { current.close(); } catch (IOException ignored) {}
+        }
         if (worker != null) worker.interrupt();
         worker = null;
         status = "Bridge stopped";
     }
+    private boolean isCurrentRun(int runId) {
+        return running && generation == runId;
+    }
     @Override public String getStatus() { return status; }
 
-    private void serve() {
-        try (ServerSocket server = new ServerSocket()) {
+    private void serve(int runId) {
+        ServerSocket server = null;
+        try {
+            server = new ServerSocket();
+            if (!isCurrentRun(runId)) return;
+            serverSocket = server;
             server.setReuseAddress(true);
             server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4);
             server.setSoTimeout(1000);
-            status = "Bridge listening on 127.0.0.1:" + PORT + " (uid " + Os.getuid() + "); waiting for Bismuth";
-            Log.i(TAG, status);
-            while (running) {
+            if (isCurrentRun(runId)) {
+                status = "Bridge listening on 127.0.0.1:" + PORT + " (uid " + Os.getuid() + "); waiting for Bismuth";
+                Log.i(TAG, status);
+            }
+            while (isCurrentRun(runId)) {
                 try (Socket client = server.accept()) {
+                    if (!isCurrentRun(runId)) break;
                     client.setTcpNoDelay(true);
                     BufferedWriter out = new BufferedWriter(new OutputStreamWriter(client.getOutputStream()));
                     status = "Bismuth connected; streaming shell telemetry";
                     Log.i(TAG, status);
-                    while (running && !client.isClosed()) {
+                    while (isCurrentRun(runId) && !client.isClosed()) {
                         out.write(snapshotCsv()); out.newLine(); out.flush();
                         Thread.sleep(500);
                     }
-                    if (running) status = "Bismuth client closed; bridge listening on 127.0.0.1:" + PORT;
+                    if (isCurrentRun(runId)) status = "Bismuth client closed; bridge listening on 127.0.0.1:" + PORT;
                 } catch (SocketTimeoutException ignored) {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt(); break;
                 } catch (IOException e) {
-                    if (running) {
+                    if (isCurrentRun(runId)) {
                         status = "Client I/O error: " + e.getClass().getSimpleName() + "; bridge listening";
                         Log.w(TAG, status, e);
                     }
                 }
             }
         } catch (Exception e) {
-            status = "Bridge error: " + e.getClass().getSimpleName() + ": " + e.getMessage();
-            Log.e(TAG, status, e);
-        } finally { running = false; }
+            if (isCurrentRun(runId)) {
+                status = "Bridge error: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+                Log.e(TAG, status, e);
+            }
+        } finally {
+            if (server != null) {
+                if (serverSocket == server) serverSocket = null;
+                try { server.close(); } catch (IOException ignored) {}
+            }
+            // An obsolete worker must never change the state of a newer run.
+            if (generation == runId) {
+                running = false;
+                worker = null;
+                if (!"Bridge stopped".equals(status)) status = "Bridge stopped";
+            }
+        }
     }
 
     private static long readLong(String path) {
