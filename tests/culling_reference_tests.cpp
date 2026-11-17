@@ -1,4 +1,5 @@
 #include "bismuth/culling_reference.hpp"
+#include "bismuth/clip_bounds.hpp"
 #include "bismuth/atlas_indices.hpp"
 #include "bismuth/atlas_lifecycle.hpp"
 #include "bismuth/atlas_observation.hpp"
@@ -236,5 +237,50 @@ int main() {
     const AtlasObservationSnapshot passiveStats = passive.snapshot();
     assert(passiveStats.quadWrites == 1u);
     assert(passiveStats.structuralMutations == 1u);
+    // Projection helper: identity MVP keeps clip-space x/y unchanged.
+    const ClipMatrix4 identityMvp{
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f
+    };
+    const std::array<QuadPosition3, 4> identityQuad{{
+        {-0.75f, -0.5f, 0.f}, {0.25f, -0.5f, 0.f},
+        {-0.75f, 0.5f, 0.f}, {0.25f, 0.5f, 0.f}
+    }};
+    const Bounds projected = conservativeQuadClipBounds(identityQuad, identityMvp);
+    assert(projected.left == -0.75f && projected.right == 0.25f);
+    assert(projected.bottom == -0.5f && projected.top == 0.5f);
+    assert(intersects(projected, Rect{-1.f, -1.f, 0.f, 0.f}));
+    assert(!intersects(projected, Rect{0.5f, 0.5f, 1.f, 1.f}));
+
+    // Perspective divide is applied to every vertex, not just the first one.
+    ClipMatrix4 perspectiveMvp = identityMvp;
+    perspectiveMvp[3] = 0.5f;
+    const Bounds perspectiveBounds = conservativeQuadClipBounds(identityQuad, perspectiveMvp);
+    assert(perspectiveBounds.left < -0.75f);
+    assert(perspectiveBounds.right > 0.25f);
+    assert(isValidBounds(perspectiveBounds));
+
+    // Unsafe matrices, vertices, and eye-plane crossings fail open to full NDC.
+    ClipMatrix4 invalidMvp = identityMvp;
+    invalidMvp[0] = std::numeric_limits<float>::quiet_NaN();
+    const Bounds invalidMatrixBounds = conservativeQuadClipBounds(identityQuad, invalidMvp);
+    assert(invalidMatrixBounds.left == -1.f && invalidMatrixBounds.bottom == -1.f);
+    assert(invalidMatrixBounds.right == 1.f && invalidMatrixBounds.top == 1.f);
+    auto behindEyeQuad = identityQuad;
+    behindEyeQuad[0].z = -2.f;
+    ClipMatrix4 eyePlaneMvp = identityMvp;
+    eyePlaneMvp[11] = 1.f;
+    eyePlaneMvp[15] = 0.f;
+    const Bounds eyePlaneBounds = conservativeQuadClipBounds(behindEyeQuad, eyePlaneMvp);
+    assert(eyePlaneBounds.left == -1.f && eyePlaneBounds.bottom == -1.f);
+    assert(eyePlaneBounds.right == 1.f && eyePlaneBounds.top == 1.f);
+    auto invalidVertexQuad = identityQuad;
+    invalidVertexQuad[2].x = std::numeric_limits<float>::infinity();
+    const Bounds invalidVertexBounds = conservativeQuadClipBounds(invalidVertexQuad, identityMvp);
+    assert(invalidVertexBounds.left == -1.f && invalidVertexBounds.bottom == -1.f);
+    assert(invalidVertexBounds.right == 1.f && invalidVertexBounds.top == 1.f);
+
     std::cout << "Bismuth-Android reference tests passed\n";
 }
