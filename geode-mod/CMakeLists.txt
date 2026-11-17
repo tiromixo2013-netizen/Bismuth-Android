@@ -8,9 +8,9 @@ if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "GEODE_SDK is not set")
 endif()
 
-# The Geode package is intentionally UI-only while native Cocos hook
-# installation is being revalidated. Do not link Dobby or compile the
-# experimental renderer adapter into this package.
+# This package contains the gameplay HUD, PlayLayer telemetry hooks, and the
+# passive SpriteBatch observer. The experimental native GLES renderer adapter
+# remains a separate library and is intentionally not linked into the Geode mod.
 file(GLOB_RECURSE GEODE_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 add_library(${PROJECT_NAME} SHARED ${GEODE_SOURCES})
 
