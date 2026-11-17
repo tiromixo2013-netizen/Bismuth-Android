@@ -2,8 +2,10 @@
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/CCSpriteBatchNode.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -28,6 +30,13 @@ float g_hudRefreshAccumulator = 0.f;
 float g_cachedP50Ms = 0.f;
 float g_cachedP95Ms = 0.f;
 float g_cachedP99Ms = 0.f;
+std::atomic<std::uint64_t> g_batchDrawCallsCurrent{0};
+std::atomic<std::uint64_t> g_batchChildrenCurrent{0};
+std::atomic<std::uint64_t> g_batchCpuNsCurrent{0};
+std::uint64_t g_batchDrawCallsLast = 0;
+std::uint64_t g_batchChildrenLast = 0;
+std::uint64_t g_batchCpuNsLast = 0;
+bool g_loggedFirstPlayUpdate = false;
 
 void addPauseSettingsButton(CCNode* layer, CCObject* target, SEL_MenuHandler selector) {
     auto icon = CCSprite::createWithSpriteFrameName("GJ_optionsBtn_001.png");
@@ -126,7 +135,7 @@ void createHud(CCNode* layer) {
     g_bismuthHud = label;
 }
 
-void syncHud(CCNode* layer) {
+void syncHud() {
     const bool enabled = Mod::get()->getSettingValue<bool>("hud-enabled");
     if (!enabled) {
         if (g_bismuthHud) {
@@ -136,7 +145,7 @@ void syncHud(CCNode* layer) {
         }
         return;
     }
-    if (!g_bismuthHud) createHud(layer);
+    if (!g_bismuthHud) createHud();\n    else if (g_bismuthHud->getParent() != CCDirector::sharedDirector()->getRunningScene()) {\n        auto* oldHud = g_bismuthHud;\n        g_bismuthHud = nullptr;\n        oldHud->removeFromParentAndCleanup(true);\n        createHud();\n    }
 }
 
 void updateHud(float dt, double updateCpuMs) {
@@ -167,7 +176,7 @@ void updateHud(float dt, double updateCpuMs) {
     const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
     const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
 
-    const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
+    const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;\n    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
     char text[768];
     if (Mod::get()->getSettingValue<bool>("hud-advanced")) {
         if (Mod::get()->getSettingValue<bool>("hud-graph")) {
@@ -243,6 +252,25 @@ class $modify(BismuthPlayLayer, PlayLayer) {
     }
 };
 
+class $modify(BismuthSpriteBatchNode, CCSpriteBatchNode) {
+    void draw() {
+        if (!Mod::get()->getSettingValue<bool>("renderer-telemetry")) {
+            CCSpriteBatchNode::draw();
+            return;
+        }
+        const auto start = std::chrono::steady_clock::now();
+        CCSpriteBatchNode::draw();
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        auto* children = getChildren();
+        const auto childCount = children ? static_cast<std::uint64_t>(children->count()) : 0u;
+        g_batchDrawCallsCurrent.fetch_add(1, std::memory_order_relaxed);
+        g_batchChildrenCurrent.fetch_add(childCount, std::memory_order_relaxed);
+        if (elapsed > 0)
+            g_batchCpuNsCurrent.fetch_add(static_cast<std::uint64_t>(elapsed), std::memory_order_relaxed);
+    }
+};
+
 class $modify(BismuthPauseLayer, PauseLayer) {
     void customSetup() {
         PauseLayer::customSetup();
@@ -268,8 +296,8 @@ class $modify(BismuthEditorPauseLayer, EditorPauseLayer) {
 $on_mod(Loaded) {
     // Keep renderer hooks disabled in the Geode package until the pre-render
     // installation path and target binary have been validated on-device.
-    log::info("Bismuth: Geode UI loaded in safe mode; native Cocos hooks are not installed.");
+    log::info("Bismuth: Geode mod loaded; PlayLayer and CCSpriteBatchNode telemetry hooks are registered.");
     if (Mod::get()->getSettingValue<bool>("diagnostics")) {
-        log::info("Bismuth diagnostics: HUD reports PlayLayer update cadence and CPU wall time only; GPU and draw-call metrics remain unavailable.");
+        log::info("Bismuth diagnostics: HUD reports PlayLayer cadence, CPU update time, SpriteBatch draw invocations/children and batch CPU submission time. GPU execution time and raw GL draw calls are not measured.");
     }
 }
