@@ -207,11 +207,11 @@ std::string makeFrameGraph() {
     return graph;
 }
 
-void createHud() {
+void createHud(CCNode* gameplayLayer) {
     if (!Mod::get()->getSettingValue<bool>("hud-enabled")) return;
-    auto* layer = CCDirector::sharedDirector()->getRunningScene();
+    auto* layer = gameplayLayer;
     if (!layer) {
-        log::warn("Bismuth: running scene unavailable; HUD creation deferred.");
+        log::warn("Bismuth: gameplay layer unavailable; HUD creation deferred.");
         return;
     }
 
@@ -228,14 +228,16 @@ void createHud() {
     const auto size = CCDirector::sharedDirector()->getWinSize();
     label->setPosition({12.f, size.height - 12.f});
     label->setScale(1.08f);
-    label->setZOrder(30000);
+    label->setVisible(true);
+    label->setZOrder(100000);
     label->setID("bismuth.android/live-hud"_spr);
-    layer->addChild(label, 20000);
+    layer->addChild(label, 100000);
+    log::info("Bismuth: live HUD attached directly to PlayLayer.");
     g_bismuthHud = label;
     g_lastHudText.clear();
 }
 
-void syncHud() {
+void syncHud(CCNode* gameplayLayer) {
     const bool enabled = Mod::get()->getSettingValue<bool>("hud-enabled");
     if (!enabled) {
         if (g_bismuthHud) {
@@ -246,15 +248,14 @@ void syncHud() {
         }
         return;
     }
-    auto* runningScene = CCDirector::sharedDirector()->getRunningScene();
     if (!g_bismuthHud) {
-        createHud();
-    } else if (runningScene && g_bismuthHud->getParent() != runningScene) {
+        createHud(gameplayLayer);
+    } else if (gameplayLayer && g_bismuthHud->getParent() != gameplayLayer) {
         auto* oldHud = g_bismuthHud;
         g_bismuthHud = nullptr;
         g_lastHudText.clear();
         oldHud->removeFromParentAndCleanup(true);
-        createHud();
+        createHud(gameplayLayer);
     }
 }
 
@@ -353,7 +354,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_batchCpuNsCurrent.store(0, std::memory_order_relaxed);
         g_batchDrawCallsLast = g_batchChildrenLast = g_batchCpuNsLast = 0;
         g_loggedFirstPlayUpdate = false;
-        createHud();
+        createHud(this);
         log::info("Bismuth: PlayLayer entered; gameplay telemetry hook is active.");
     }
 
@@ -365,7 +366,7 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         PlayLayer::update(dt);
         const auto end = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
-        syncHud();
+        syncHud(this);
         if (!g_loggedFirstPlayUpdate) {
             g_loggedFirstPlayUpdate = true;
             log::info("Bismuth: first PlayLayer::update received (dt={:.4f}s).", dt);
