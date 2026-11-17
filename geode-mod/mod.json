@@ -8,12 +8,21 @@
   "version": "0.9.1",
   "developer": "Bismuth Project",
   "description": "Android ARM64 settings UI and experimental rendering research for Geometry Dash 2.2081.",
-  "tags": ["performance", "utility"],
+  "tags": [
+    "performance",
+    "utility"
+  ],
   "settings": {
     "diagnostics": {
       "type": "bool",
       "name": "Diagnostic logging",
       "description": "Write Bismuth safe-mode initialization information to the Geode log.",
+      "default": true
+    },
+    "hud-enabled": {
+      "type": "bool",
+      "name": "Live performance HUD",
+      "description": "Show a compact top-left in-game HUD with game-loop cadence and PlayLayer CPU update time. GPU and draw-call values are shown as unavailable when not measured.",
       "default": true
     }
   }
