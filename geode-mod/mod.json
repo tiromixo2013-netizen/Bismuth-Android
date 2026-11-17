@@ -61,6 +61,12 @@
       "description": "Show resident memory for the whole game process from /proc/self/statm; this is not native-heap-only memory.",
       "default": true
     },
+    "shizuku-bridge-enabled": {
+      "type": "bool",
+      "name": "Shizuku telemetry bridge",
+      "description": "Receive device CPU/GPU/thermal and system RAM telemetry from Bismuth Companion over localhost. Start the companion bridge before launching gameplay.",
+      "default": true
+    },
     "renderer-telemetry": {
       "type": "bool",
       "name": "SpriteBatch renderer telemetry",
