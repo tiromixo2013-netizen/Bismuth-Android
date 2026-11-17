@@ -28,8 +28,8 @@
     "hud-advanced": {
       "type": "bool",
       "name": "Advanced monitor",
-      "description": "Show frame interval percentiles, estimated 1% low, CPU update time, hitch count, and sample count.",
-      "default": false
+      "description": "Show measured PlayLayer update cadence, frame-interval percentiles, CPU update duration, hitch count, and sample count. These are not display-present or GPU metrics.",
+      "default": true
     },
     "hud-graph": {
       "type": "bool",
