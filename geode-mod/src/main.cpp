@@ -29,6 +29,10 @@ using namespace geode::prelude;
 
 namespace {
 CCLabelTTF* g_bismuthHud = nullptr;
+CCLabelTTF* g_bismuthFpsLabel = nullptr;
+CCLayerColor* g_bismuthCpuFill = nullptr;
+CCLayerColor* g_bismuthGpuFill = nullptr;
+CCLayerColor* g_bismuthHudPanel = nullptr;
 std::string g_lastHudText;
 std::array<float, 120> g_frameIntervalsMs{};
 std::array<double, 120> g_cpuUpdateMs{};
@@ -332,73 +336,102 @@ std::string makeFrameGraph() {
     return graph;
 }
 
-CCNode* getHudHost(CCNode* gameplayLayer) {
-    // The running scene is the stable top-level overlay host. PlayLayer children can
-    // be covered or transformed by gameplay rendering/camera nodes on some GD builds.
-    auto* director = CCDirector::sharedDirector();
-    auto* scene = director ? director->getRunningScene() : nullptr;
-    return scene ? static_cast<CCNode*>(scene) : gameplayLayer;
-}
+void createHud(CCNode* controller) {
+    if (!Mod::get()->getSettingValue<bool>("hud-enabled") || !controller) return;
+    const auto size = CCDirector::sharedDirector()->getWinSize();
 
-void createHud(CCNode* gameplayLayer) {
-    if (!Mod::get()->getSettingValue<bool>("hud-enabled")) return;
-    auto* host = getHudHost(gameplayLayer);
-    if (!host) {
-        log::warn("Bismuth: no running scene/PlayLayer host; HUD creation deferred.");
-        return;
+    // Compact, translucent top-left overlay. The controller owns every child,
+    // so scene teardown destroys the complete HUD without leaving stale labels.
+    auto panel = CCLayerColor::create({10, 17, 15, 218}, 190.f, 96.f);
+    if (!panel) return;
+    panel->setAnchorPoint({0.f, 1.f});
+    panel->setPosition({10.f, size.height - 10.f});
+    panel->setID("bismuth.android/performance-overlay"_spr);
+    controller->addChild(panel, 1);
+    g_bismuthHudPanel = panel;
+
+    auto title = CCLabelTTF::create("BISMUTH  •  LIVE", "Arial", 8.f);
+    if (title) {
+        title->setAnchorPoint({0.f, 0.5f});
+        title->setPosition({8.f, 84.f});
+        title->setColor({105, 245, 160});
+        panel->addChild(title);
     }
 
-    // Keep the overlay independent of the gameplay node tree so it renders above
-    // the game layer and survives child-order changes during a level.
-    auto* director = CCDirector::sharedDirector();
-    if (!director) return;
-    auto label = CCLabelTTF::create("BISMUTH HUD ACTIVE | COLLECTING FRAME SAMPLES...", "Roboto", 13.f);
-    if (!label) {
-        log::error("Bismuth: CCLabelTTF creation failed; live HUD cannot be displayed.");
-        return;
+    g_bismuthFpsLabel = CCLabelTTF::create("FPS --", "Arial", 17.f);
+    if (g_bismuthFpsLabel) {
+        g_bismuthFpsLabel->setAnchorPoint({0.f, 0.5f});
+        g_bismuthFpsLabel->setPosition({8.f, 63.f});
+        g_bismuthFpsLabel->setColor({120, 255, 165});
+        panel->addChild(g_bismuthFpsLabel);
     }
 
-    label->setAnchorPoint({0.f, 1.f});
-    label->setOpacity(255);
-    label->setColor({255, 255, 255});
-    const auto size = director->getWinSize();
-    label->setPosition({14.f, size.height - 16.f});
-    label->setScale(1.0f);
-    label->setVisible(true);
-    label->setZOrder(1000000);
-    label->setID("bismuth.android/live-hud"_spr);
-    host->addChild(label, 1000000);
-    g_bismuthHud = label;
+    g_bismuthHud = CCLabelTTF::create("FRAME -- ms", "Arial", 8.f);
+    if (g_bismuthHud) {
+        g_bismuthHud->setAnchorPoint({0.f, 0.5f});
+        g_bismuthHud->setPosition({8.f, 46.f});
+        g_bismuthHud->setColor({218, 228, 222});
+        panel->addChild(g_bismuthHud);
+    }
+
+    auto cpuLabel = CCLabelTTF::create("CPU  --", "Arial", 8.f);
+    if (cpuLabel) {
+        cpuLabel->setAnchorPoint({0.f, 0.5f});
+        cpuLabel->setPosition({8.f, 30.f});
+        cpuLabel->setColor({125, 220, 255});
+        panel->addChild(cpuLabel);
+        cpuLabel->setID("bismuth.android/cpu-label"_spr);
+    }
+    auto cpuBg = CCLayerColor::create({39, 54, 52, 230}, 174.f, 4.f);
+    if (cpuBg) {
+        cpuBg->setAnchorPoint({0.f, 0.5f});
+        cpuBg->setPosition({8.f, 21.f});
+        panel->addChild(cpuBg);
+        g_bismuthCpuFill = CCLayerColor::create({64, 205, 150, 255}, 1.f, 4.f);
+        if (g_bismuthCpuFill) { g_bismuthCpuFill->setAnchorPoint({0.f, 0.5f}); cpuBg->addChild(g_bismuthCpuFill); }
+    }
+
+    auto gpuLabel = CCLabelTTF::create("GPU  --", "Arial", 8.f);
+    if (gpuLabel) {
+        gpuLabel->setAnchorPoint({0.f, 0.5f});
+        gpuLabel->setPosition({8.f, 12.f});
+        gpuLabel->setColor({185, 160, 255});
+        panel->addChild(gpuLabel);
+        gpuLabel->setID("bismuth.android/gpu-label"_spr);
+    }
+    auto gpuBg = CCLayerColor::create({39, 54, 52, 230}, 174.f, 4.f);
+    if (gpuBg) {
+        gpuBg->setAnchorPoint({0.f, 0.5f});
+        gpuBg->setPosition({8.f, 3.f});
+        panel->addChild(gpuBg);
+        g_bismuthGpuFill = CCLayerColor::create({155, 125, 255, 255}, 1.f, 4.f);
+        if (g_bismuthGpuFill) { g_bismuthGpuFill->setAnchorPoint({0.f, 0.5f}); gpuBg->addChild(g_bismuthGpuFill); }
+    }
+
     g_lastHudText.clear();
-    log::info("Bismuth: live HUD attached to running scene (host={}, visible={}).",
-        static_cast<void*>(host), label->isVisible());
+    log::info("Bismuth: compact top-left HUD attached to scene controller.");
 }
 
-void syncHud(CCNode* gameplayLayer) {
+void syncHud(CCNode* controller) {
     const bool enabled = Mod::get()->getSettingValue<bool>("hud-enabled");
     if (!enabled) {
-        if (g_bismuthHud) {
-            auto* oldHud = g_bismuthHud;
+        if (g_bismuthHudPanel) {
+            auto* oldPanel = g_bismuthHudPanel;
+            g_bismuthHudPanel = nullptr;
             g_bismuthHud = nullptr;
+            g_bismuthFpsLabel = nullptr;
+            g_bismuthCpuFill = nullptr;
+            g_bismuthGpuFill = nullptr;
             g_lastHudText.clear();
-            oldHud->removeFromParentAndCleanup(true);
+            oldPanel->removeFromParentAndCleanup(true);
         }
         return;
     }
-    auto* host = getHudHost(gameplayLayer);
-    if (!g_bismuthHud) {
-        createHud(gameplayLayer);
-    } else if (host && g_bismuthHud->getParent() != host) {
-        auto* oldHud = g_bismuthHud;
-        g_bismuthHud = nullptr;
-        g_lastHudText.clear();
-        oldHud->removeFromParentAndCleanup(true);
-        createHud(gameplayLayer);
-    }
+    if (!g_bismuthHudPanel && controller) createHud(controller);
 }
 
 void updateHud(float dt, double updateCpuMs) {
-    if (!g_bismuthHud) return;
+    if (!g_bismuthHud || !g_bismuthHudPanel || !g_bismuthFpsLabel) return;
 
     if (std::isfinite(updateCpuMs) && updateCpuMs >= 0.0 && updateCpuMs < 10000.0) {
         g_cpuUpdateMs[g_cpuSampleCursor] = updateCpuMs;
@@ -446,51 +479,92 @@ void updateHud(float dt, double updateCpuMs) {
     const bool graphEnabled = advanced && Mod::get()->getSettingValue<bool>("hud-graph");
     const bool rendererEnabled = Mod::get()->getSettingValue<bool>("renderer-telemetry");
     const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
+    std::ostringstream fpsText;
+    fpsText.setf(std::ios::fixed);
+    fpsText.precision(0);
+    fpsText << "FPS " << loopFps;
+    g_bismuthFpsLabel->setString(fpsText.str().c_str());
+
     std::ostringstream out;
     out.setf(std::ios::fixed);
     out.precision(1);
-    out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\n";
-    if (Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) {
-        out << "SHIZUKU " << (g_shizukuConnected ? "CONNECTED" : "WAITING");
-        if (!g_shizukuConnected && !g_shizukuLastError.empty()) out << " (" << g_shizukuLastError << ")";
-        out << "\n";
+    out << "FRAME " << frameMs << " ms";
+    if (processRssMb >= 0.0) out << "   RAM " << processRssMb / 1024.0 << " GB";
+    if (g_shizukuSnapshot.ramTotalMb > 0.0 && g_shizukuSnapshot.ramUsedMb >= 0.0)
+        out << "   SYS " << g_shizukuSnapshot.ramUsedMb / 1024.0 << "/" << g_shizukuSnapshot.ramTotalMb / 1024.0 << " GB";
+    const std::string frameText = out.str();
+    g_bismuthHud->setString(frameText.c_str());
+
+    const double cpuShown = gameCpuPercent >= 0.0 ? gameCpuPercent : g_shizukuSnapshot.deviceCpu;
+    auto* cpuLabel = g_bismuthHudPanel->getChildByID("bismuth.android/cpu-label");
+    if (auto* label = typeinfo_cast<CCLabelTTF*>(cpuLabel)) {
+        std::ostringstream value;
+        value.setf(std::ios::fixed); value.precision(0);
+        value << "CPU  " << (cpuShown >= 0.0 ? value.str() : std::string("--"));
+        if (cpuShown >= 0.0) { value.str(""); value.clear(); value << "CPU  " << cpuShown << "%"; }
+        label->setString(value.str().c_str());
     }
-    out.precision(2);
-    out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\n";
-    if (Mod::get()->getSettingValue<bool>("monitor-cpu")) {
-        out << "GAME CPU " << (gameCpuPercent >= 0.0 ? std::to_string(gameCpuPercent) + "%" : "N/A");
-        out << " | DEVICE CPU " << (g_shizukuSnapshot.deviceCpu >= 0.0 ? std::to_string(g_shizukuSnapshot.deviceCpu) + "%" : "N/A") << " | ";
+    auto* gpuLabelNode = g_bismuthHudPanel->getChildByID("bismuth.android/gpu-label");
+    if (auto* label = typeinfo_cast<CCLabelTTF*>(gpuLabelNode)) {
+        std::ostringstream value;
+        value.setf(std::ios::fixed); value.precision(0);
+        value << "GPU  " << (gpuPercent >= 0.0 ? std::to_string(static_cast<int>(gpuPercent)) + "%" : "N/A");
+        label->setString(value.str().c_str());
     }
-    if (Mod::get()->getSettingValue<bool>("monitor-gpu")) out << "GPU " << (gpuPercent >= 0.0 ? std::to_string(gpuPercent) + "%" : "N/A");
-    out << "\n";
-    if (thermalEnabled) out << "CPU TEMP " << (cpuTempC >= 0.0 ? std::to_string(cpuTempC) + " C" : "N/A")
-        << " | GPU TEMP " << (gpuTempC >= 0.0 ? std::to_string(gpuTempC) + " C" : "N/A") << "\n";
-    if (advanced) {
-        out.precision(2);
-        out << "FRAME P50/P95/P99 " << g_cachedP50Ms << " / " << g_cachedP95Ms << " / " << g_cachedP99Ms
-            << " ms | UPDATE CPU P50/P95/P99 " << g_cpuP50Ms << " / " << g_cpuP95Ms << " / " << g_cpuP99Ms << " ms\n";
-        out << "HITCHES " << g_hitchCount << " | SAMPLES " << g_frameIntervalCount << "\n";
-    }
-    if (graphEnabled) out << "FRAME GRAPH " << makeFrameGraph() << "\n";
-    if (processRssMb >= 0.0) { out.precision(1); out << "PROCESS RSS " << processRssMb << " MB\n"; }
-    if (g_shizukuSnapshot.ramTotalMb > 0.0 && g_shizukuSnapshot.ramUsedMb >= 0.0) {
-        out.precision(0); out << "SYSTEM RAM " << g_shizukuSnapshot.ramUsedMb << " / " << g_shizukuSnapshot.ramTotalMb << " MB\n";
-    }
-    if (rendererEnabled) {
-        out.precision(2);
-        out << "SPRITEBATCH " << g_batchDrawCallsLast << " | CHILDREN " << g_batchChildrenLast
-            << " | CPU SUBMIT " << batchCpuMs << " ms\n";
-    }
-    out << "GPU = DEVFREQ BUSY/TOTAL IF EXPOSED | *LOW IS P99 ESTIMATE";
-    const std::string hudText = out.str();
-    if (hudText != g_lastHudText) { g_bismuthHud->setString(hudText.c_str()); g_lastHudText = hudText; }
+    const auto setFill = [](CCLayerColor* fill, double percent) {
+        if (!fill) return;
+        const float width = percent >= 0.0 ? static_cast<float>(174.0 * std::clamp(percent, 0.0, 100.0) / 100.0) : 1.f;
+        fill->setContentSize({std::max(1.f, width), 4.f});
+        fill->setVisible(percent >= 0.0);
+    };
+    setFill(g_bismuthCpuFill, cpuShown);
+    setFill(g_bismuthGpuFill, gpuPercent);
+    g_lastHudText = frameText;
 }
 }
 
+class BismuthHudController final : public CCNode {
+public:
+    static BismuthHudController* create() {
+        auto* ret = new BismuthHudController();
+        if (ret && ret->init()) { ret->autorelease(); return ret; }
+        delete ret;
+        return nullptr;
+    }
+
+    bool init() override {
+        if (!CCNode::init()) return false;
+        scheduleUpdate();
+        return true;
+    }
+
+    ~BismuthHudController() override {
+        if (g_bismuthHudPanel && g_bismuthHudPanel->getParent() == this) {
+            g_bismuthHudPanel = nullptr;
+            g_bismuthHud = nullptr;
+            g_bismuthFpsLabel = nullptr;
+            g_bismuthCpuFill = nullptr;
+            g_bismuthGpuFill = nullptr;
+        }
+    }
+
+    void update(float dt) override {
+        const auto start = std::chrono::steady_clock::now();
+        pollShizukuBridge();
+        syncHud(this);
+        if (g_bismuthHudPanel) updateHud(dt, m_lastWorkMs);
+        const auto end = std::chrono::steady_clock::now();
+        m_lastWorkMs = std::chrono::duration<double, std::milli>(end - start).count();
+    }
+
+private:
+    double m_lastWorkMs = 0.0;
+};
+
 class $modify(BismuthPlayLayer, PlayLayer) {
-    // PlayLayer does not declare onEnter() or update() in the 2.2081 bindings.
-    // Hook its actual lifecycle/frame callbacks instead, otherwise Geode silently
-    // omits those inherited methods and neither the HUD nor bridge ever starts.
+    // Do not hook PlayLayer::postUpdate: other installed mods chain this callback,
+    // and Bismuth's previous hook was present in the reported SIGSEGV stack.
+    // A scene-owned scheduled controller samples independently of that hook chain.
     void onEnterTransitionDidFinish() {
         PlayLayer::onEnterTransitionDidFinish();
         g_frameIntervalsMs.fill(0.f);
@@ -509,38 +583,20 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_batchCpuNsCurrent.store(0, std::memory_order_relaxed);
         g_batchDrawCallsLast = g_batchChildrenLast = g_batchCpuNsLast = 0;
         g_loggedFirstPlayUpdate = false;
-        createHud(this);
-        log::info("Bismuth: PlayLayer transition finished; HUD initialized.");
-    }
 
-    void postUpdate(float dt) {
-        g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
-        g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
-        g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
-        const auto start = std::chrono::steady_clock::now();
-        PlayLayer::postUpdate(dt);
-        const auto end = std::chrono::steady_clock::now();
-        const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
-
-        // Keep transport independent from HUD creation/rendering. The bridge is
-        // polled even if the HUD setting is disabled or label creation fails.
-        pollShizukuBridge();
-        syncHud(this);
-        if (!g_loggedFirstPlayUpdate) {
-            g_loggedFirstPlayUpdate = true;
-            log::info("Bismuth: first PlayLayer::postUpdate received (dt={:.4f}s, hud={}).",
-                dt, static_cast<void*>(g_bismuthHud));
+        auto* director = CCDirector::sharedDirector();
+        auto* scene = director ? director->getRunningScene() : nullptr;
+        if (scene) {
+            auto* controller = BismuthHudController::create();
+            if (controller) scene->addChild(controller, 1000000);
+            else log::error("Bismuth: failed to create scene HUD controller.");
+        } else {
+            log::error("Bismuth: no running scene for HUD controller.");
         }
-        updateHud(dt, elapsed);
+        log::info("Bismuth: PlayLayer transition finished; scene-owned HUD controller initialized.");
     }
 
     void onExit() {
-        if (g_bismuthHud) {
-            auto* oldHud = g_bismuthHud;
-            g_bismuthHud = nullptr;
-            g_lastHudText.clear();
-            oldHud->removeFromParentAndCleanup(true);
-        }
         closeShizukuSocket();
         PlayLayer::onExit();
     }
