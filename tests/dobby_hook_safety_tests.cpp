@@ -30,6 +30,10 @@ void fail_instruction_relocation(void *, CodeMemBlock *, CodeMemBlock *) {
 void replacement_function() {
 }
 
+int fail_code_restore(void *, std::uint8_t *, std::uint32_t) {
+    return -1;
+}
+
 extern "C" int hooked_function() {
     return 99;
 }
@@ -56,6 +60,13 @@ void run_successful_hook_lifecycle() {
     assert(origin != nullptr);
     assert(target() == 99);
     assert(reinterpret_cast<Function>(origin)() == 42);
+
+    // A failed restore must keep the interceptor entry registered so a later
+    // retry can restore the target instead of losing the recovery record.
+    dobby_test_restore_code_patch = fail_code_restore;
+    assert(DobbyDestroy(code) != 0);
+    assert(target() == 99);
+    dobby_test_restore_code_patch = nullptr;
     assert(DobbyDestroy(code) == 0);
     assert(target() == 42);
     assert(munmap(code, static_cast<std::size_t>(pageSize)) == 0);
