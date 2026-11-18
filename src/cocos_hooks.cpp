@@ -108,11 +108,34 @@ std::atomic<std::uint32_t> g_activeCallbacks{0};
 std::mutex g_installMutex;
 std::mutex g_gpuHookMutex;
 bool g_gpuDrawHookInstalled = false;
-bool g_hooksInstalled = false;
-// Once any passive detour installation is attempted, a later failure poisons
-// this process' install state. Dobby rollback is deliberately avoided because
-// unpatching while Cocos threads may execute is not proven safe.
-bool g_hookInstallPoisoned = false;
+
+enum class HookInstallState : std::uint8_t {
+    Clean,
+    Installing,
+    Partial,
+    Installed
+};
+// Protected by g_installMutex. A partial install is process-lifetime state:
+// never attempt rollback or a second install while game threads may be active.
+HookInstallState g_hookInstallState = HookInstallState::Clean;
+
+class HookInstallAttemptGuard final {
+public:
+    explicit HookInstallAttemptGuard(HookInstallState& state) noexcept : state_(state) {}
+    ~HookInstallAttemptGuard() {
+        if (!committed_ && state_ == HookInstallState::Installing)
+            state_ = HookInstallState::Partial;
+    }
+    void commit() noexcept {
+        state_ = HookInstallState::Installed;
+        committed_ = true;
+    }
+    HookInstallAttemptGuard(const HookInstallAttemptGuard&) = delete;
+    HookInstallAttemptGuard& operator=(const HookInstallAttemptGuard&) = delete;
+private:
+    HookInstallState& state_;
+    bool committed_ = false;
+};
 
 class ScopedBismuthTrace final {
 public:
@@ -477,7 +500,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         return false;
     }
     std::lock_guard<std::mutex> lock(g_installMutex);
-    if (g_hooksInstalled) {
+    if (g_hookInstallState == HookInstallState::Installed) {
         AtlasPassiveObserver* current = g_observer.load(std::memory_order_acquire);
         if (current && current != observer) {
             if (error) *error = "Cocos hooks are already attached to another Bismuth instance";
@@ -486,8 +509,8 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         g_observer.store(observer, std::memory_order_release);
         return true;
     }
-    if (g_hookInstallPoisoned) {
-        if (error) *error = "A previous Cocos hook installation attempt failed after detouring began; refusing an unsafe retry until process restart";
+    if (g_hookInstallState != HookInstallState::Clean) {
+        if (error) *error = "Cocos hook installation is partial or already in progress; refusing another attempt until process restart";
         return false;
     }
 
@@ -533,10 +556,11 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         return false;
     }
 
-    // From this point onward a Dobby call may have modified executable code
-    // even if it reports failure or returns an unusable trampoline. Poison the
-    // state before the first attempt so every subsequent early return is safe.
-    g_hookInstallPoisoned = true;
+    // From this point onward every early return transitions to Partial.
+    // Existing detours remain pass-through because the observer is unpublished.
+    // Never try to unpatch them while render threads may be executing.
+    g_hookInstallState = HookInstallState::Installing;
+    HookInstallAttemptGuard installAttempt(g_hookInstallState);
 
     if (!g_spriteUpdateTransformHooked) {
         if (DobbyHook(spriteUpdateTransform, reinterpret_cast<void*>(hookedSpriteUpdateTransform),
@@ -575,12 +599,8 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
                       reinterpret_cast<void**>(&g_originalBatchDraw)) != 0 ||
             !g_originalBatchDraw) {
             g_originalBatchDraw = nullptr;
-            // If rollback fails, keep the updateQuad trampoline intact. Its
-            // observer is still null until both hooks are installed.
-            if (DobbyDestroy(updateQuad) == 0) {
-                g_updateQuadHooked = false;
-                g_originalUpdateQuad = nullptr;
-            }
+            // Keep previously installed hooks as pass-through detours. The
+            // install guard marks this process Partial; no unsafe rollback.
             if (error) *error = "Dobby failed to install the CCSpriteBatchNode::draw observer";
             return false;
         }
@@ -664,8 +684,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     }
 
     g_observer.store(observer, std::memory_order_release);
-    g_hooksInstalled = true;
-    g_hookInstallPoisoned = false;
+    installAttempt.commit();
     return true;
 }
 
