@@ -67,7 +67,10 @@ public final class MainActivity extends Activity {
         status = new TextView(this);
         status.setTextSize(15);
         status.setPadding(0, 24, 0, 24);
-        status.setTextIsSelectable(true);\n        ScrollView diagnosticsScroll = new ScrollView(this);\n        diagnosticsScroll.addView(status);\n        root.addView(diagnosticsScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        status.setTextIsSelectable(true);
+        ScrollView diagnosticsScroll = new ScrollView(this);
+        diagnosticsScroll.addView(status);
+        root.addView(diagnosticsScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         Button start = new Button(this);
         start.setText("Connect to Shizuku & start bridge");
         start.setOnClickListener(v -> requestAndStart());
