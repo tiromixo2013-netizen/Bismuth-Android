@@ -395,7 +395,7 @@ void createHud(CCNode* controller) {
 
     // QOL-style compact telemetry: one small label, avoiding multiple TTF
     // texture rebuilds and decorative bars during gameplay.
-    auto panel = CCLayerColor::create({20, 25, 32, 190}, 184.f, 38.f);
+    auto panel = CCLayerColor::create({20, 25, 32, 190}, 190.f, 48.f);
     if (!panel) return;
     panel->setAnchorPoint({0.f, 1.f});
     panel->setPosition(CCPointZero);
@@ -404,7 +404,7 @@ void createHud(CCNode* controller) {
     g_bismuthHudPanel = panel;
 
     g_bismuthHud = CCLabelTTF::create(
-        "FPS -- | CPU -- | GPU --\nRAM -- | TEMP -- | P95 --",
+        "FPS -- | CPU -- | GPU --\nRAM -- | TEMP --\nP95 -- | 1% --",
         "Roboto", 7.5f
     );
     if (!g_bismuthHud) {
@@ -413,7 +413,7 @@ void createHud(CCNode* controller) {
         return;
     }
     g_bismuthHud->setAnchorPoint({0.f, 0.5f});
-    g_bismuthHud->setPosition({7.f, 19.f});
+    g_bismuthHud->setPosition({7.f, 24.f});
     g_bismuthHud->setColor({238, 244, 250});
     panel->addChild(g_bismuthHud);
 
@@ -533,7 +533,7 @@ void updateHud(float dt, double updateCpuMs) {
         compact << std::setprecision(1) << "APP " << cachedProcessRss / 1024.0 << "G";
     else compact << "N/A";
 
-    compact << " | TEMP ";
+    compact << " | T";
     if (cachedCpuTemp >= 0.0 || cachedGpuTemp >= 0.0) {
         compact << "C";
         if (cachedCpuTemp >= 0.0) compact << std::setprecision(0) << cachedCpuTemp;
@@ -544,7 +544,7 @@ void updateHud(float dt, double updateCpuMs) {
     } else compact << "N/A";
 
     if (advanced && g_frameIntervalCount > 0) {
-        compact << " | P95 " << std::setprecision(1) << g_cachedP95Ms << "ms";
+        compact << "\\nP95 " << std::setprecision(1) << g_cachedP95Ms << "ms";
         if (lowFpsEstimate > 0.0)
             compact << " | 1% " << std::setprecision(0) << lowFpsEstimate;
     }
