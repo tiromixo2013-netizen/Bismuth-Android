@@ -67,6 +67,7 @@ constexpr char kRemoveQuadsAtIndexSymbol[] = "_ZN7cocos2d14CCTextureAtlas18remov
 constexpr char kMoveQuadsThreeSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjjj";
 constexpr char kMoveQuadsTwoSymbol[] = "_ZN7cocos2d14CCTextureAtlas18moveQuadsFromIndexEjj";
 constexpr char kIncreaseTotalQuadsSymbol[] = "_ZN7cocos2d14CCTextureAtlas22increaseTotalQuadsWithEj";
+constexpr char kResizeCapacitySymbol[] = "_ZN7cocos2d14CCTextureAtlas14resizeCapacityEj";
 constexpr char kGlDrawElementsSymbol[] = "glDrawElements";
 
 using SpriteUpdateTransformFn = void (*)(void*);
@@ -80,6 +81,7 @@ using TwoIndexFn = void (*)(void*, unsigned int, unsigned int);
 using OneIndexFn = void (*)(void*, unsigned int);
 using ThreeIndexFn = void (*)(void*, unsigned int, unsigned int, unsigned int);
 using IncreaseQuadsFn = void (*)(void*, unsigned int);
+using ResizeCapacityFn = bool (*)(void*, unsigned int);
 using GlDrawElementsFn = void (*)(GLenum, GLsizei, GLenum, const void*);
 
 SpriteUpdateTransformFn g_originalSpriteUpdateTransform = nullptr;
@@ -95,6 +97,7 @@ TwoIndexFn g_originalRemoveQuadsAtIndex = nullptr;
 ThreeIndexFn g_originalMoveQuadsThree = nullptr;
 TwoIndexFn g_originalMoveQuadsTwo = nullptr;
 IncreaseQuadsFn g_originalIncreaseTotalQuads = nullptr;
+ResizeCapacityFn g_originalResizeCapacity = nullptr;
 GlDrawElementsFn g_originalGlDrawElements = nullptr;
 std::atomic<bool> g_gpuDrawBridgeEnabled{false};
 std::atomic<bool> g_gpuTimingEnabled{false};
@@ -147,6 +150,7 @@ bool g_removeQuadsAtIndexHooked = false;
 bool g_moveQuadsThreeHooked = false;
 bool g_moveQuadsTwoHooked = false;
 bool g_increaseTotalQuadsHooked = false;
+bool g_resizeCapacityHooked = false;
 
 const char* basenameOf(const char* path) {
     if (!path) return "";
@@ -459,6 +463,23 @@ void hookedIncreaseTotalQuads(void* self, unsigned int amount) {
     recordStructuralMutation();
 }
 
+bool hookedResizeCapacity(void* self, unsigned int newCapacity) {
+    const bool result = g_originalResizeCapacity
+        ? g_originalResizeCapacity(self, newCapacity)
+        : false;
+    // Even a false result can mean the engine cleared atlas storage. Always
+    // invalidate slot and quad-derived caches after the original attempt.
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) {
+        if (g_passiveTelemetryGate.enabled())
+            observer->recordCapacityResizeAttempt();
+        else
+            observer->invalidateStructuralMutation();
+    }
+    releaseObserver(observer);
+    return result;
+}
+
 bool ensureGpuDrawElementsHook() noexcept {
     std::lock_guard<std::mutex> lock(g_gpuHookMutex);
     if (g_gpuDrawHookInstalled && g_originalGlDrawElements) return true;
@@ -524,6 +545,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
     void* moveQuadsThree = dlsym(RTLD_DEFAULT, kMoveQuadsThreeSymbol);
     void* moveQuadsTwo = dlsym(RTLD_DEFAULT, kMoveQuadsTwoSymbol);
     void* increaseTotalQuads = dlsym(RTLD_DEFAULT, kIncreaseTotalQuadsSymbol);
+    void* resizeCapacity = dlsym(RTLD_DEFAULT, kResizeCapacitySymbol);
     void* glDrawElements = dlsym(RTLD_DEFAULT, kGlDrawElementsSymbol);
     if (!symbolBelongsToTarget(spriteUpdateTransform, module.path) ||
         !symbolBelongsToTarget(batchDraw, module.path) ||
@@ -537,7 +559,8 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         !symbolBelongsToTarget(removeQuadsAtIndex, module.path) ||
         !symbolBelongsToTarget(moveQuadsThree, module.path) ||
         !symbolBelongsToTarget(moveQuadsTwo, module.path) ||
-        !symbolBelongsToTarget(increaseTotalQuads, module.path)) {
+        !symbolBelongsToTarget(increaseTotalQuads, module.path) ||
+        !symbolBelongsToTarget(resizeCapacity, module.path)) {
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
     }
@@ -667,6 +690,14 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
             return false;
         }
         g_increaseTotalQuadsHooked = true;
+    }
+    if (!g_resizeCapacityHooked) {
+        if (DobbyHook(resizeCapacity, reinterpret_cast<void*>(hookedResizeCapacity),
+                      reinterpret_cast<void**>(&g_originalResizeCapacity)) != 0 || !g_originalResizeCapacity) {
+            if (error) *error = "Dobby failed to install CCTextureAtlas::resizeCapacity observer";
+            return false;
+        }
+        g_resizeCapacityHooked = true;
     }
 
     g_observer.store(observer, std::memory_order_release);
