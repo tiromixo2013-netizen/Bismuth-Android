@@ -1,7 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
-#include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/CCNode.hpp>
 #include <Geode/modify/CCSpriteBatchNode.hpp>
 
 #include <algorithm>
@@ -14,14 +14,32 @@
 #include <cstdio>
 #include <dirent.h>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#include <cstdlib>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 using namespace geode::prelude;
 
 namespace {
 CCLabelTTF* g_bismuthHud = nullptr;
+CCLabelTTF* g_bismuthFpsLabel = nullptr;
+CCLabelTTF* g_bismuthCpuLabel = nullptr;
+CCLabelTTF* g_bismuthGpuLabel = nullptr;
+CCLabelTTF* g_bismuthRamLabel = nullptr;
+CCLabelTTF* g_bismuthThermalLabel = nullptr;
+CCLabelTTF* g_bismuthAdvancedLabel = nullptr;
+CCLabelTTF* g_bismuthGraphLabel = nullptr;
+CCLayerColor* g_bismuthCpuFill = nullptr;
+CCLayerColor* g_bismuthGpuFill = nullptr;
+CCLayerColor* g_bismuthHudPanel = nullptr;
 std::string g_lastHudText;
 std::array<float, 120> g_frameIntervalsMs{};
 std::array<double, 120> g_cpuUpdateMs{};
@@ -33,6 +51,8 @@ std::size_t g_frameIntervalCursor = 0;
 std::size_t g_updateCount = 0;
 std::size_t g_hitchCount = 0;
 float g_hudRefreshAccumulator = 0.f;
+float g_percentileRefreshAccumulator = 0.f;
+float g_hudSyncAccumulator = 0.f;
 float g_cachedP50Ms = 0.f;
 float g_cachedP95Ms = 0.f;
 float g_cachedP99Ms = 0.f;
@@ -42,7 +62,150 @@ std::atomic<std::uint64_t> g_batchCpuNsCurrent{0};
 std::uint64_t g_batchDrawCallsLast = 0;
 std::uint64_t g_batchChildrenLast = 0;
 std::uint64_t g_batchCpuNsLast = 0;
+
 bool g_loggedFirstPlayUpdate = false;
+
+struct ShizukuSnapshot {
+    double deviceCpu = -1.0, gpu = -1.0, cpuTemp = -1.0, gpuTemp = -1.0;
+    double ramUsedMb = -1.0, ramTotalMb = -1.0;
+};
+ShizukuSnapshot g_shizukuSnapshot;
+int g_shizukuSocket = -1;
+bool g_shizukuConnecting = false;
+bool g_shizukuConnected = false;
+std::string g_shizukuRx;
+std::string g_shizukuLastError;
+auto g_shizukuLastSample = std::chrono::steady_clock::time_point{};
+auto g_shizukuConnectStarted = std::chrono::steady_clock::time_point{};
+
+void closeShizukuSocket() {
+    if (g_shizukuSocket >= 0) ::close(g_shizukuSocket);
+    g_shizukuSocket = -1;
+    g_shizukuConnecting = false;
+    g_shizukuConnected = false;
+    g_shizukuRx.clear();
+    // Never leave stale device telemetry visible after a disconnect or opt-out.
+    g_shizukuSnapshot = ShizukuSnapshot{};
+}
+
+void parseShizukuLine(const std::string& line) {
+    std::istringstream in(line);
+    std::array<double, 6> values{};
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        std::string field;
+        if (!std::getline(in, field, ',')) return;
+        try {
+            std::size_t parsed = 0;
+            values[i] = std::stod(field, &parsed);
+            if (parsed != field.size() || !std::isfinite(values[i])) return;
+        } catch (...) { return; }
+    }
+    // Reject extra columns and impossible values; -1 is the protocol's N/A sentinel.
+    std::string extra;
+    if (std::getline(in, extra, ',')) return;
+    const auto validPercent = [](double v) { return v == -1.0 || (v >= 0.0 && v <= 100.0); };
+    const auto validTemp = [](double v) { return v == -1.0 || (v >= 0.0 && v <= 150.0); };
+    const auto validMemory = [](double v) { return v == -1.0 || v >= 0.0; };
+    if (!validPercent(values[0]) || !validPercent(values[1]) ||
+        !validTemp(values[2]) || !validTemp(values[3]) ||
+        !validMemory(values[4]) || !validMemory(values[5])) return;
+    if (values[4] >= 0.0 && values[5] >= 0.0 && values[4] > values[5]) return;
+    g_shizukuSnapshot.deviceCpu = values[0];
+    g_shizukuSnapshot.gpu = values[1];
+    g_shizukuSnapshot.cpuTemp = values[2];
+    g_shizukuSnapshot.gpuTemp = values[3];
+    g_shizukuSnapshot.ramUsedMb = values[4];
+    g_shizukuSnapshot.ramTotalMb = values[5];
+    g_shizukuConnected = true;
+    g_shizukuLastSample = std::chrono::steady_clock::now();
+    g_shizukuLastError.clear();
+}
+
+void pollShizukuBridge() {
+    if (!Mod::get()->getSettingValue<bool>("shizuku-bridge-enabled")) {
+        if (g_shizukuSocket >= 0) closeShizukuSocket();
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    // The scene controller schedules this function at 1 Hz. Keep socket work
+    // out of the per-frame update path; the Companion samples independently.
+    if (g_shizukuConnected && now - g_shizukuLastSample > std::chrono::seconds(2)) {
+        closeShizukuSocket();
+        g_shizukuLastError = "telemetry timeout after 2s";
+    }
+
+    if (g_shizukuSocket < 0) {
+        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) { g_shizukuLastError = std::string("socket: ") + std::strerror(errno); return; }
+        const int flags = ::fcntl(fd, F_GETFL, 0);
+        if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+            g_shizukuLastError = std::string("fcntl: ") + std::strerror(errno);
+            ::close(fd);
+            return;
+        }
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(38471);
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        const int result = ::connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+        if (result < 0 && errno != EINPROGRESS) {
+            g_shizukuLastError = std::string("connect: ") + std::strerror(errno);
+            ::close(fd); return;
+        }
+        g_shizukuSocket = fd;
+        g_shizukuConnecting = result < 0;
+        g_shizukuConnectStarted = now;
+        if (!g_shizukuConnecting) g_shizukuLastError.clear();
+    }
+
+    if (g_shizukuConnecting) {
+        pollfd pfd{g_shizukuSocket, static_cast<short>(POLLOUT | POLLERR | POLLHUP), 0};
+        const int ready = ::poll(&pfd, 1, 0);
+        if (ready < 0) {
+            if (errno == EINTR) return;
+            g_shizukuLastError = std::string("poll: ") + std::strerror(errno);
+            closeShizukuSocket(); return;
+        }
+        if (ready == 0) {
+            if (now - g_shizukuConnectStarted > std::chrono::seconds(3)) {
+                g_shizukuLastError = "connect timeout after 3s";
+                closeShizukuSocket();
+            }
+            return;
+        }
+        int error = 0; socklen_t length = sizeof(error);
+        if (::getsockopt(g_shizukuSocket, SOL_SOCKET, SO_ERROR, &error, &length) < 0 || error) {
+            const int code = error ? error : errno;
+            g_shizukuLastError = std::string("connect: ") + std::strerror(code);
+            closeShizukuSocket(); return;
+        }
+        g_shizukuLastError.clear();
+        g_shizukuConnecting = false;
+    }
+
+    char buffer[512];
+    for (;;) {
+        const auto count = ::recv(g_shizukuSocket, buffer, sizeof(buffer), 0);
+        if (count > 0) {
+            g_shizukuRx.append(buffer, static_cast<std::size_t>(count));
+            if (g_shizukuRx.size() > 4096) g_shizukuRx.erase(0, g_shizukuRx.size() - 2048);
+            std::size_t newline = 0;
+            while ((newline = g_shizukuRx.find('\n')) != std::string::npos) {
+                parseShizukuLine(g_shizukuRx.substr(0, newline));
+                g_shizukuRx.erase(0, newline + 1);
+            }
+            continue;
+        }
+        if (count == 0) {
+            closeShizukuSocket();
+            g_shizukuLastError = "server closed connection";
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+            g_shizukuLastError = std::string("recv: ") + std::strerror(errno);
+            closeShizukuSocket();
+        }
+        break;
+    }
+}
 
 double sampleProcessCpuPercent() {
     static std::uint64_t previousTicks = 0;
@@ -207,73 +370,101 @@ std::string makeFrameGraph() {
     return graph;
 }
 
-CCNode* getHudHost(CCNode* gameplayLayer) {
-    // The running scene is the stable top-level overlay host. PlayLayer children can
-    // be covered or transformed by gameplay rendering/camera nodes on some GD builds.
-    auto* director = CCDirector::sharedDirector();
-    auto* scene = director ? director->getRunningScene() : nullptr;
-    return scene ? static_cast<CCNode*>(scene) : gameplayLayer;
-}
-
-void createHud(CCNode* gameplayLayer) {
-    if (!Mod::get()->getSettingValue<bool>("hud-enabled")) return;
-    auto* host = getHudHost(gameplayLayer);
-    if (!host) {
-        log::warn("Bismuth: no running scene/PlayLayer host; HUD creation deferred.");
-        return;
-    }
-
-    // Keep the overlay independent of the gameplay node tree so it renders above
-    // the game layer and survives child-order changes during a level.
+void positionHudPanel() {
+    if (!g_bismuthHudPanel) return;
     auto* director = CCDirector::sharedDirector();
     if (!director) return;
-    auto label = CCLabelTTF::create("BISMUTH HUD ACTIVE | COLLECTING FRAME SAMPLES...", "Roboto", 13.f);
-    if (!label) {
-        log::error("Bismuth: CCLabelTTF creation failed; live HUD cannot be displayed.");
-        return;
-    }
 
-    label->setAnchorPoint({0.f, 1.f});
-    label->setOpacity(255);
-    label->setColor({255, 255, 255});
-    const auto size = director->getWinSize();
-    label->setPosition({14.f, size.height - 16.f});
-    label->setScale(1.0f);
-    label->setVisible(true);
-    label->setZOrder(1000000);
-    label->setID("bismuth.android/live-hud"_spr);
-    host->addChild(label, 1000000);
-    g_bismuthHud = label;
-    g_lastHudText.clear();
-    log::info("Bismuth: live HUD attached to running scene (host={}, visible={}).",
-        static_cast<void*>(host), label->isVisible());
+    const auto origin = director->getVisibleOrigin();
+    const auto visible = director->getVisibleSize();
+    const auto panelSize = g_bismuthHudPanel->getContentSize();
+    const auto position = Mod::get()->getSettingValue<std::string>("hud-position");
+
+    const bool right = position == "top-right" || position == "bottom-right";
+    const bool bottom = position == "bottom-left" || position == "bottom-right";
+    g_bismuthHudPanel->setAnchorPoint({0.f, 0.f});
+    g_bismuthHudPanel->setPosition({
+        right ? origin.x + visible.width - panelSize.width - 10.f : origin.x + 10.f,
+        bottom ? origin.y + 10.f : origin.y + visible.height - panelSize.height - 10.f
+    });
+
+    if (g_bismuthHud) {
+        g_bismuthHud->setAnchorPoint({right ? 1.f : 0.f, 0.5f});
+        g_bismuthHud->setPosition({right ? panelSize.width - 7.f : 7.f, panelSize.height * 0.5f});
+    }
 }
 
-void syncHud(CCNode* gameplayLayer) {
+void createHud(CCNode* controller) {
+    if (!Mod::get()->getSettingValue<bool>("hud-enabled") || !controller) return;
+
+    // QOL-style compact telemetry: one small label, avoiding multiple TTF
+    // texture rebuilds and decorative bars during gameplay.
+    auto panel = CCLayerColor::create({20, 25, 32, 190}, 190.f, 48.f);
+    if (!panel) return;
+    panel->setAnchorPoint({0.f, 1.f});
+    panel->setPosition(CCPointZero);
+    panel->setID("bismuth.android/performance-overlay"_spr);
+    controller->addChild(panel, 1);
+    g_bismuthHudPanel = panel;
+
+    g_bismuthHud = CCLabelTTF::create(
+        "FPS -- | CPU -- | GPU --\nRAM -- | TEMP --\nP95 -- | 1% --",
+        "Roboto", 7.5f
+    );
+    if (!g_bismuthHud) {
+        g_bismuthHudPanel = nullptr;
+        panel->removeFromParentAndCleanup(true);
+        return;
+    }
+    g_bismuthHud->setAnchorPoint({0.f, 0.5f});
+    g_bismuthHud->setPosition({7.f, 24.f});
+    g_bismuthHud->setColor({238, 244, 250});
+    panel->addChild(g_bismuthHud);
+    positionHudPanel();
+
+    g_bismuthFpsLabel = nullptr;
+    g_bismuthCpuLabel = nullptr;
+    g_bismuthGpuLabel = nullptr;
+    g_bismuthRamLabel = nullptr;
+    g_bismuthThermalLabel = nullptr;
+    g_bismuthAdvancedLabel = nullptr;
+    g_bismuthGraphLabel = nullptr;
+    g_bismuthCpuFill = nullptr;
+    g_bismuthGpuFill = nullptr;
+    g_lastHudText.clear();
+    log::info("BISMUTH HUD initialized: compact single-label telemetry overlay.");
+}
+
+void syncHud(CCNode* controller) {
     const bool enabled = Mod::get()->getSettingValue<bool>("hud-enabled");
     if (!enabled) {
-        if (g_bismuthHud) {
-            auto* oldHud = g_bismuthHud;
+        if (g_bismuthHudPanel) {
+            auto* oldPanel = g_bismuthHudPanel;
+            g_bismuthHudPanel = nullptr;
             g_bismuthHud = nullptr;
+            g_bismuthFpsLabel = nullptr;
+            g_bismuthCpuLabel = nullptr;
+            g_bismuthGpuLabel = nullptr;
+            g_bismuthRamLabel = nullptr;
+            g_bismuthThermalLabel = nullptr;
+            g_bismuthAdvancedLabel = nullptr;
+            g_bismuthGraphLabel = nullptr;
+            g_bismuthCpuFill = nullptr;
+            g_bismuthGpuFill = nullptr;
             g_lastHudText.clear();
-            oldHud->removeFromParentAndCleanup(true);
+            oldPanel->removeFromParentAndCleanup(true);
         }
         return;
     }
-    auto* host = getHudHost(gameplayLayer);
-    if (!g_bismuthHud) {
-        createHud(gameplayLayer);
-    } else if (host && g_bismuthHud->getParent() != host) {
-        auto* oldHud = g_bismuthHud;
-        g_bismuthHud = nullptr;
-        g_lastHudText.clear();
-        oldHud->removeFromParentAndCleanup(true);
-        createHud(gameplayLayer);
-    }
+    if (!g_bismuthHudPanel && controller) createHud(controller);
+    // Re-read the selected corner on the existing 1 Hz settings-sync path.
+    // This makes corner changes apply during the current session without
+    // adding per-frame layout work.
+    if (g_bismuthHudPanel) positionHudPanel();
 }
 
 void updateHud(float dt, double updateCpuMs) {
-    if (!g_bismuthHud) return;
+    if (!g_bismuthHud || !g_bismuthHudPanel) return;
 
     if (std::isfinite(updateCpuMs) && updateCpuMs >= 0.0 && updateCpuMs < 10000.0) {
         g_cpuUpdateMs[g_cpuSampleCursor] = updateCpuMs;
@@ -288,69 +479,145 @@ void updateHud(float dt, double updateCpuMs) {
         g_frameIntervalCount = std::min(g_frameIntervalCount + 1, g_frameIntervalsMs.size());
         if (frameMs > 33.3f) ++g_hitchCount;
         ++g_updateCount;
-        if ((g_updateCount % 12u) == 0u) refreshPercentiles();
+        g_percentileRefreshAccumulator += dt;
+        if (g_percentileRefreshAccumulator >= 1.0f) {
+            g_percentileRefreshAccumulator = std::fmod(g_percentileRefreshAccumulator, 1.0f);
+            if (Mod::get()->getSettingValue<bool>("hud-advanced")) refreshPercentiles();
+        }
     }
 
-    // Avoid rebuilding TTF textures on every game update; refresh at 4 Hz.
+    // All device telemetry is sampled by the Companion process. The game
+    // thread only reads the latest in-memory snapshot; never scan /proc or
+    // /sys from the frame/update path.
+    // Rebuilding a TTF label regenerates its texture. Limit that work to 1 Hz
+    // instead of 4 Hz; frame-time samples are still collected every update.
     g_hudRefreshAccumulator += std::max(0.f, dt);
-    if (g_hudRefreshAccumulator < 0.25f) return;
-    g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 0.25f);
+    if (g_hudRefreshAccumulator < 1.0f) return;
+    g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 1.0f);
 
-    const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
-    const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
-    const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
+    const bool cpuEnabled = Mod::get()->getSettingValue<bool>("monitor-cpu");
+    const bool gpuEnabled = Mod::get()->getSettingValue<bool>("monitor-gpu");
+    const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
+    const bool memoryEnabled = Mod::get()->getSettingValue<bool>("hud-memory");
+    const double cpuShown = cpuEnabled ? g_shizukuSnapshot.deviceCpu : -1.0;
+    const double gpuShown = gpuEnabled ? g_shizukuSnapshot.gpu : -1.0;
+    const double cpuTempShown = thermalEnabled ? g_shizukuSnapshot.cpuTemp : -1.0;
+    const double gpuTempShown = thermalEnabled ? g_shizukuSnapshot.gpuTemp : -1.0;
+    const double systemRamUsed = memoryEnabled ? g_shizukuSnapshot.ramUsedMb : -1.0;
+    const double systemRamTotal = memoryEnabled ? g_shizukuSnapshot.ramTotalMb : -1.0;
+
     double averageFrameMs = 0.0;
     if (g_frameIntervalCount) {
-        for (std::size_t i = 0; i < g_frameIntervalCount; ++i) averageFrameMs += g_frameIntervalsMs[i];
+        for (std::size_t i = 0; i < g_frameIntervalCount; ++i)
+            averageFrameMs += g_frameIntervalsMs[i];
         averageFrameMs /= static_cast<double>(g_frameIntervalCount);
     }
     const double averageFps = averageFrameMs > 0.0 ? 1000.0 / averageFrameMs : 0.0;
-    const double targetFps = readEngineTargetFps();
-    const double gameCpuPercent = Mod::get()->getSettingValue<bool>("monitor-cpu") ? sampleProcessCpuPercent() : -1.0;
-    const double gpuPercent = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
-    const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
-    const double cpuTempC = thermalEnabled ? readThermalZoneC("cpu") : -1.0;
-    const double gpuTempC = thermalEnabled ? readThermalZoneC("gpu") : -1.0;
-
-
-    const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
+    const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
+    const double fpsShown = averageFps > 0.0 ? averageFps : (frameMs > 0.f ? 1000.0 / frameMs : 0.0);
+    const double lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.0 / g_cachedP99Ms : 0.0;
     const bool advanced = Mod::get()->getSettingValue<bool>("hud-advanced");
-    const bool graphEnabled = advanced && Mod::get()->getSettingValue<bool>("hud-graph");
-    const bool rendererEnabled = Mod::get()->getSettingValue<bool>("renderer-telemetry");
-    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
-    std::ostringstream out;
-    out.setf(std::ios::fixed);
-    out.precision(1);
-    out << "BISMUTH | FPS " << loopFps << " | AVG " << averageFps << " | TARGET " << (targetFps > 0.0 ? targetFps : 0.0) << "\n";
-    out.precision(2);
-    out << "FRAME " << frameMs << " ms | 1% LOW* " << lowFpsEstimate << "\n";
-    if (Mod::get()->getSettingValue<bool>("monitor-cpu")) out << "GAME CPU " << (gameCpuPercent >= 0.0 ? std::to_string(gameCpuPercent) + "%" : "N/A") << " | ";
-    if (Mod::get()->getSettingValue<bool>("monitor-gpu")) out << "GPU " << (gpuPercent >= 0.0 ? std::to_string(gpuPercent) + "%" : "N/A");
-    out << "\n";
-    if (thermalEnabled) out << "CPU TEMP " << (cpuTempC >= 0.0 ? std::to_string(cpuTempC) + " C" : "N/A")
-        << " | GPU TEMP " << (gpuTempC >= 0.0 ? std::to_string(gpuTempC) + " C" : "N/A") << "\n";
-    if (advanced) {
-        out.precision(2);
-        out << "FRAME P50/P95/P99 " << g_cachedP50Ms << " / " << g_cachedP95Ms << " / " << g_cachedP99Ms
-            << " ms | UPDATE CPU P50/P95/P99 " << g_cpuP50Ms << " / " << g_cpuP95Ms << " / " << g_cpuP99Ms << " ms\n";
-        out << "HITCHES " << g_hitchCount << " | SAMPLES " << g_frameIntervalCount << "\n";
+
+    std::ostringstream compact;
+    compact.setf(std::ios::fixed);
+    compact << "FPS " << std::setprecision(0) << fpsShown
+            << " | CPU ";
+    if (cpuShown >= 0.0) compact << std::setprecision(0) << cpuShown << "%";
+    else compact << "N/A";
+    compact << " | GPU ";
+    if (gpuShown >= 0.0) compact << std::setprecision(0) << gpuShown << "%";
+    else compact << "N/A";
+
+    compact << "\nRAM ";
+    if (systemRamUsed >= 0.0 && systemRamTotal > 0.0)
+        compact << std::setprecision(1) << systemRamUsed / 1024.0 << "/" << systemRamTotal / 1024.0 << "G";
+    else compact << "N/A";
+
+    compact << " | T";
+    if (cpuTempShown >= 0.0 || gpuTempShown >= 0.0) {
+        compact << "C";
+        if (cpuTempShown >= 0.0) compact << std::setprecision(0) << cpuTempShown;
+        else compact << "--";
+        compact << "/G";
+        if (gpuTempShown >= 0.0) compact << std::setprecision(0) << gpuTempShown;
+        else compact << "--";
+    } else compact << "N/A";
+
+    if (advanced && g_frameIntervalCount > 0) {
+        compact << "\nP95 " << std::setprecision(1) << g_cachedP95Ms << "ms";
+        if (lowFpsEstimate > 0.0)
+            compact << " | 1% " << std::setprecision(0) << lowFpsEstimate;
     }
-    if (graphEnabled) out << "FRAME GRAPH " << makeFrameGraph() << "\n";
-    if (processRssMb >= 0.0) { out.precision(1); out << "PROCESS RSS " << processRssMb << " MB\n"; }
-    if (rendererEnabled) {
-        out.precision(2);
-        out << "SPRITEBATCH " << g_batchDrawCallsLast << " | CHILDREN " << g_batchChildrenLast
-            << " | CPU SUBMIT " << batchCpuMs << " ms\n";
+
+    const std::string text = compact.str();
+    if (text != g_lastHudText) {
+        g_bismuthHud->setString(text.c_str());
+        g_lastHudText = text;
     }
-    out << "GPU = DEVFREQ BUSY/TOTAL IF EXPOSED | *LOW IS P99 ESTIMATE";
-    const std::string hudText = out.str();
-    if (hudText != g_lastHudText) { g_bismuthHud->setString(hudText.c_str()); g_lastHudText = hudText; }
 }
 }
 
-class $modify(BismuthPlayLayer, PlayLayer) {
+class BismuthHudController final : public CCNode {
+public:
+    static BismuthHudController* create() {
+        auto* ret = new BismuthHudController();
+        if (ret && ret->init()) { ret->autorelease(); return ret; }
+        delete ret;
+        return nullptr;
+    }
+
+    bool init() override {
+        if (!CCNode::init()) return false;
+        scheduleUpdate();
+        return true;
+    }
+
+    ~BismuthHudController() override {
+        g_bismuthHudPanel = nullptr;
+        g_bismuthHud = nullptr;
+        g_bismuthFpsLabel = nullptr;
+        g_bismuthCpuLabel = nullptr;
+        g_bismuthGpuLabel = nullptr;
+        g_bismuthRamLabel = nullptr;
+        g_bismuthThermalLabel = nullptr;
+        g_bismuthAdvancedLabel = nullptr;
+        g_bismuthGraphLabel = nullptr;
+        g_bismuthCpuFill = nullptr;
+        g_bismuthGpuFill = nullptr;
+        g_lastHudText.clear();
+    }
+
+    void update(float dt) override {
+        const auto start = std::chrono::steady_clock::now();
+        g_hudSyncAccumulator += std::max(0.f, dt);
+        if (g_hudSyncAccumulator >= 1.0f) {
+            g_hudSyncAccumulator = std::fmod(g_hudSyncAccumulator, 1.0f);
+            // Slow-path work is deliberately grouped at 1 Hz: settings sync,
+            // companion socket polling, and telemetry counter snapshots.
+            syncHud(this);
+            pollShizukuBridge();
+            g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
+            g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
+            g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
+        }
+        if (g_bismuthHudPanel) updateHud(dt, m_lastWorkMs);
+        const auto end = std::chrono::steady_clock::now();
+        m_lastWorkMs = std::chrono::duration<double, std::milli>(end - start).count();
+    }
+
+private:
+    double m_lastWorkMs = 0.0;
+};
+
+class $modify(BismuthSceneNode, CCNode) {
     void onEnter() {
-        PlayLayer::onEnter();
+        CCNode::onEnter();
+
+        // PlayLayer inherits this lifecycle method from CCNode. Hook the class
+        // that actually owns the method, then filter to gameplay layers only.
+        auto* playLayer = typeinfo_cast<PlayLayer*>(this);
+        if (!playLayer) return;
+
         g_frameIntervalsMs.fill(0.f);
         g_cpuUpdateMs.fill(0.0);
         g_cpuSampleCount = 0;
@@ -361,43 +628,34 @@ class $modify(BismuthPlayLayer, PlayLayer) {
         g_updateCount = 0;
         g_hitchCount = 0;
         g_hudRefreshAccumulator = 0.f;
+        g_percentileRefreshAccumulator = 0.f;
+        g_hudSyncAccumulator = 0.f;
         g_cachedP50Ms = g_cachedP95Ms = g_cachedP99Ms = 0.f;
         g_batchDrawCallsCurrent.store(0, std::memory_order_relaxed);
         g_batchChildrenCurrent.store(0, std::memory_order_relaxed);
         g_batchCpuNsCurrent.store(0, std::memory_order_relaxed);
         g_batchDrawCallsLast = g_batchChildrenLast = g_batchCpuNsLast = 0;
         g_loggedFirstPlayUpdate = false;
-        createHud(this);
-        log::info("Bismuth: PlayLayer entered; gameplay telemetry hook is active and scene HUD requested.");
-    }
 
-    void update(float dt) {
-        g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
-        g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
-        g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
-        const auto start = std::chrono::steady_clock::now();
-        PlayLayer::update(dt);
-        const auto end = std::chrono::steady_clock::now();
-        const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
-        syncHud(this);
-        if (!g_loggedFirstPlayUpdate) {
-            g_loggedFirstPlayUpdate = true;
-            log::info("Bismuth: first PlayLayer::update received (dt={:.4f}s, hud={}).", dt, static_cast<void*>(g_bismuthHud));
+        auto* director = CCDirector::sharedDirector();
+        auto* scene = director ? director->getRunningScene() : nullptr;
+        if (scene) {
+            auto* controller = BismuthHudController::create();
+            if (controller) scene->addChild(controller, 1000000);
+            else log::error("Bismuth: failed to create scene HUD controller.");
+        } else {
+            log::error("Bismuth: no running scene for HUD controller.");
         }
-        updateHud(dt, elapsed);
+        log::info("Bismuth: PlayLayer entered through CCNode lifecycle hook; scene-owned HUD controller initialized.");
     }
 
     void onExit() {
-        if (g_bismuthHud) {
-            auto* oldHud = g_bismuthHud;
-            g_bismuthHud = nullptr;
-            g_lastHudText.clear();
-            oldHud->removeFromParentAndCleanup(true);
+        if (typeinfo_cast<PlayLayer*>(this)) {
+            closeShizukuSocket();
         }
-        PlayLayer::onExit();
+        CCNode::onExit();
     }
 };
-
 class $modify(BismuthSpriteBatchNode, CCSpriteBatchNode) {
     void draw() {
         if (!Mod::get()->getSettingValue<bool>("renderer-telemetry")) {
@@ -441,7 +699,7 @@ class $modify(BismuthEditorPauseLayer, EditorPauseLayer) {
 
 $on_mod(Loaded) {
     // Register safe Geode-level telemetry hooks; no draw replacement or GPU culling is enabled.
-    log::info("Bismuth: Geode mod loaded; PlayLayer and CCSpriteBatchNode telemetry hooks are registered.");
+    log::info("Bismuth: Geode mod loaded; PlayLayer entry lifecycle and CCSpriteBatchNode draw observer are registered.");
     if (Mod::get()->getSettingValue<bool>("diagnostics")) {
         log::info("Bismuth diagnostics: HUD reports PlayLayer cadence, CPU update time, SpriteBatch draw invocations/children and batch CPU submission time. GPU execution time and raw GL draw calls are not measured.");
     }

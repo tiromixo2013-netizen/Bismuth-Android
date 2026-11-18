@@ -4,6 +4,7 @@
 #include "bismuth/atlas_lifecycle.hpp"
 #include "bismuth/atlas_observation.hpp"
 #include "bismuth/capacity_growth.hpp"
+#include "bismuth/spatial_hash.hpp"
 #include "bismuth/target_layout.hpp"
 #include "bismuth/telemetry_gate.hpp"
 #include "bismuth/observer_callback_guard.hpp"
@@ -298,6 +299,34 @@ int main() {
     const Bounds invalidVertexBounds = conservativeQuadClipBounds(invalidVertexQuad, identityMvp);
     assert(invalidVertexBounds.left == -1.f && invalidVertexBounds.bottom == -1.f);
     assert(invalidVertexBounds.right == 1.f && invalidVertexBounds.top == 1.f);
+
+
+    // Dynamic spatial hash: updates move an object between cells without
+    // changing its stable painter-order position.
+    SpatialHash spatial(10.0f, 16u, 64u);
+    assert(spatial.insert(100u, Bounds{0, 0, 4, 4}));
+    assert(spatial.insert(200u, Bounds{25, 0, 29, 4}));
+    assert(spatial.insert(300u, Bounds{50, 0, 54, 4}));
+    std::vector<std::uint32_t> spatialHits;
+    spatial.query(Rect{-1, -1, 30, 10}, spatialHits);
+    assert((spatialHits == std::vector<std::uint32_t>{100u, 200u}));
+    assert(spatial.update(300u, Bounds{8, 0, 12, 4}));
+    spatial.query(Rect{0, 0, 15, 10}, spatialHits);
+    assert((spatialHits == std::vector<std::uint32_t>{100u, 300u}));
+    assert(spatial.remove(100u));
+    spatial.query(Rect{0, 0, 15, 10}, spatialHits);
+    assert((spatialHits == std::vector<std::uint32_t>{300u}));
+    assert(!spatial.remove(999u));
+
+    // Large bounds use the overflow path rather than expanding to thousands
+    // of cells; invalid bounds fail open and remain query-visible.
+    assert(spatial.insert(400u, Bounds{-1000, -1000, 1000, 1000}));
+    assert(spatial.insert(500u, Bounds{nan, 0, 10, 10}));
+    spatial.query(Rect{2000, 2000, 2010, 2010}, spatialHits);
+    assert((spatialHits == std::vector<std::uint32_t>{500u}));
+    // A huge query safely falls back to scanning all entries.
+    spatial.query(Rect{-1.0e20f, -1.0e20f, 1.0e20f, 1.0e20f}, spatialHits);
+    assert(spatialHits.size() == 4u);
 
     std::cout << "Bismuth-Android reference tests passed\n";
 }
