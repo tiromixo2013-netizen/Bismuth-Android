@@ -11,7 +11,8 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.view.Gravity;
 import android.widget.Button;
-import android.widget.LinearLayout;\nimport android.widget.ScrollView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import rikka.shizuku.Shizuku;
 
