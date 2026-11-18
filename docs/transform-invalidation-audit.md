@@ -272,3 +272,40 @@ verified from that package; source presence alone is not proof of deployment.
 
 The cache remains disabled and the original Cocos2d transform path remains
 authoritative.
+
+
+### Concrete built-in action trace (same target ELF)
+
+The follow-up action pass resolved several standard Cocos action update methods.
+Their implementations load the target node's vtable and dispatch property
+setters, confirming that actions are not a separate safe-to-ignore path:
+
+| Action method | ELF value | Observed target dispatch |
+|---|---:|---|
+| `CCMoveBy::update(float)` | `0x00ac05b4` | Computes an interpolated position and calls a target virtual method at vtable byte offset `+0xb8` |
+| `CCRotateBy::update(float)` | `0x00abec5c` | Calls target virtual methods at `+0x168` and `+0x178` around the interpolated rotation |
+| `CCRotateTo::update(float)` | `0x00abebd0` | Same two target virtual dispatch points for absolute rotation |
+| `CCScaleTo::update(float)` | `0x00abed50` | Calls target virtual methods at `+0x80` and `+0x90` for interpolated scale components |
+| `CCFadeTo::update(float)` | `0x00abfdc0` | Dispatches a target appearance setter after calculating opacity |
+| `CCTintTo::update(float)` | `0x00abfe98` | Dispatches a target appearance/color setter after calculating color channels |
+| `CCSequence::update(float)` | `0x00abe9cc` | Advances child actions through virtual start/update-related calls |
+| `CCCallFunc::execute()` | `0x00abd588` | Invokes a stored callback function pointer; callback code can mutate arbitrary game objects |
+
+This gives a practical distinction for the future observer:
+- Standard move/rotate/scale actions ultimately go through target virtual
+  methods, so a setter-level observer can potentially catch them if it hooks
+  the actual virtual implementation and covers overrides.
+- Fade/tint actions change appearance state and must not be mistaken for
+  transform-only updates; any quad/visual cache needs separate appearance
+  invalidation.
+- Sequence/spawn compose other actions and do not remove the underlying
+  mutation routes.
+- CallFunc callbacks are unrestricted application code from the engine's
+  point of view. They prevent a global claim that all changes are covered by
+  a finite list of built-in action hooks. A conservative cache must invalidate
+  on unknown callback execution or limit eligibility to objects proven not
+  reachable by such callbacks.
+
+This action trace remains static analysis only. It does not establish which
+specific actions Geometry Dash invokes in every level, and it does not justify
+hooking these methods or skipping their target setters.
