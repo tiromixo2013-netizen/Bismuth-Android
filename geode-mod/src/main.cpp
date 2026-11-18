@@ -544,7 +544,7 @@ void updateHud(float dt, double updateCpuMs) {
     } else compact << "N/A";
 
     if (advanced && g_frameIntervalCount > 0) {
-        compact << "\\nP95 " << std::setprecision(1) << g_cachedP95Ms << "ms";
+        compact << "\nP95 " << std::setprecision(1) << g_cachedP95Ms << "ms";
         if (lowFpsEstimate > 0.0)
             compact << " | 1% " << std::setprecision(0) << lowFpsEstimate;
     }
