@@ -128,3 +128,48 @@ To opt in, a developer must explicitly set `-DBISMUTH_ENABLE_COCOS_HOOKS=ON`;
 that mode remains experimental and unsafe until the pinned Dobby failure path
 is patched and regression-tested. This change is a safety containment, not a
 repair of Dobby's internals and not a renderer optimization.
+
+
+### Pinned Dobby failure-path patch (2026-11-18)
+
+A maintained source patch is now applied to the pinned Dobby checkout by
+cmake/patch_dobby.cmake through FetchContent's PATCH_COMMAND. It is applied
+only when a developer explicitly configures
+-DBISMUTH_ENABLE_COCOS_HOOKS=ON; the safe default remains OFF.
+
+The patch makes routing construction fail closed:
+- A missing trampoline buffer is detected before relocation or target patching.
+- Relocation must produce both a non-empty overwritten-instruction range and a
+  non-empty relocated trampoline.
+- The original target bytes must be backed up before Active() can patch them.
+- DobbyHook and DobbyInstrument stop immediately on any preparation error;
+  they do not call Active() after a failed build.
+- The optional original-trampoline output is initialized to null and is only
+  populated/signed when the caller supplied an output pointer.
+- DobbyDestroy keeps the entry registered if restoring original bytes fails,
+  allowing a later retry instead of losing the recovery record.
+
+The Android/POSIX code writer now checks mprotect before writing. If either
+page cannot be made writable, it returns failure before copying any target
+bytes; the second-page failure path attempts to restore the first page's RX
+permissions. Once bytes have been copied, the function reports the detour as
+active even if restoring RX permissions fails, and logs that condition. This
+avoids the especially dangerous false-failure state where a live detour is
+reported as failed and never registered, but it means a page can remain RWX if
+the permission restore itself fails. The implementation still assumes the
+target code pages should be RX when restored, as the previous implementation
+did.
+
+This is a source-level failure-ordering repair, not proof of full hook safety.
+It does not make patching atomic against another thread executing the target,
+does not stop the game/render threads, and does not validate Dobby trampoline
+coexistence with other mods. The Cocos hook option therefore remains OFF by
+default. No transform cache or render fast path is enabled.
+
+Validation status: the patch script and FetchContent wiring are committed,
+but an Android ARM64 build and fault-injection tests have not yet run. Required
+regression cases are: trampoline allocation failure, relocation failure,
+original-byte backup failure, first-page mprotect failure, second-page
+mprotect failure, successful hook + original trampoline call-through, and
+successful/failed DobbyDestroy restoration. Do not enable this in a normal
+player session until those checks and on-device coexistence tests pass.
