@@ -162,11 +162,16 @@ for a lower-overhead comparison run, then turn it back on without reinstalling
 hooks or restarting the game.
 
 When disabled, passive Cocos hooks skip batch child-count reads, clock
-sampling, ATrace batch sections, dirty-byte inspection, and observer counter
-updates. The EGL swap hook forwards directly to the original function without
-taking a timestamp. The experimental GPU draw bridge is controlled separately
-and remains disabled by default.
-When the GPU bridge is disabled, the atlas draw hook also skips saving and restoring its thread-local bridge context; it forwards directly through the original atlas draw path while retaining only the dirty-byte observation when telemetry is enabled.
+sampling, ATrace batch sections, and telemetry counter updates. The EGL swap
+hook forwards directly to the original function without taking a timestamp.
+The experimental GPU draw bridge is controlled separately and remains
+disabled by default. If an observer is attached for cache work, atlas dirty-byte
+inspection and revision-only invalidation continue even with telemetry off;
+correctness-critical cache invalidation is never gated by the HUD/measurement
+switch. With no observer attached, dirty-byte inspection is skipped.
+When the GPU bridge is disabled, the atlas draw hook also skips saving and
+restoring its thread-local bridge context and forwards directly through the
+original atlas draw path.
 
 This switch does **not** remove already-installed Dobby trampolines, so it is
 not a perfectly uninstrumented baseline: the pass-through detour cost remains.
