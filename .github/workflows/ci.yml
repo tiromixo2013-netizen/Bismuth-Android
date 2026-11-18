@@ -62,6 +62,7 @@ jobs:
         run: |
           grep -Fq 'build routing failed before target patch' build-android-dobby/_deps/dobby-src/source/InterceptRouting/InlineHookRouting.h
           grep -Fq 'if (!trampoline)' build-android-dobby/_deps/dobby-src/source/InterceptRouting/InterceptRouting.h
+          grep -Fq 'malloc(tramp_size)' build-android-dobby/_deps/dobby-src/source/Interceptor.h
           grep -Fq 'Do not write any target bytes unless every page is writable.' build-android-dobby/_deps/dobby-src/source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc
           grep -Fq 'hook remains registered' build-android-dobby/_deps/dobby-src/source/dobby.cpp
       - name: Build patched Dobby ARM64 native library
