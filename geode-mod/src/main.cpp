@@ -588,7 +588,14 @@ public:
     }
 
     void update(float dt) override {
-        const auto start = std::chrono::steady_clock::now();
+        // Avoid two steady_clock reads on every game update when the HUD is
+        // disabled. The controller still performs its 1 Hz settings sync so
+        // enabling the HUD takes effect without re-entering the level.
+        const bool measureHudWork = g_bismuthHudPanel != nullptr;
+        const auto start = measureHudWork
+            ? std::chrono::steady_clock::now()
+            : std::chrono::steady_clock::time_point{};
+
         g_hudSyncAccumulator += std::max(0.f, dt);
         if (g_hudSyncAccumulator >= 1.0f) {
             g_hudSyncAccumulator = std::fmod(g_hudSyncAccumulator, 1.0f);
@@ -601,8 +608,10 @@ public:
             g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
         }
         if (g_bismuthHudPanel) updateHud(dt, m_lastWorkMs);
-        const auto end = std::chrono::steady_clock::now();
-        m_lastWorkMs = std::chrono::duration<double, std::milli>(end - start).count();
+        if (measureHudWork) {
+            const auto end = std::chrono::steady_clock::now();
+            m_lastWorkMs = std::chrono::duration<double, std::milli>(end - start).count();
+        }
     }
 
 private:
