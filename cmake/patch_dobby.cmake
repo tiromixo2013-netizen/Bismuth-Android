@@ -363,3 +363,22 @@ replace_once("source/InterceptRouting/InstrumentRouting.h"
     delete entry;
     return -1;
   }]=])
+replace_once("source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc"
+[=[  int page_size = (int)sysconf(_SC_PAGESIZE);
+  uintptr_t patch_page = ALIGN_FLOOR(address, page_size);
+  uintptr_t patch_end_page = ALIGN_FLOOR((uintptr_t)address + buffer_size, page_size);]=]
+[=[  if (!address || !buffer || !buffer_size)
+    return -1;
+  long page_size_long = sysconf(_SC_PAGESIZE);
+  if (page_size_long <= 0 || (uintptr_t)address > UINTPTR_MAX - buffer_size)
+    return -1;
+  int page_size = (int)page_size_long;
+  uintptr_t patch_page = ALIGN_FLOOR(address, page_size);
+  uintptr_t patch_end_page = ALIGN_FLOOR((uintptr_t)address + buffer_size - 1, page_size);]=])
+
+replace_once("source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc"
+[=[      mprotect((void *)patch_page, page_size, PROT_READ | PROT_EXEC);
+      return -1;]=]
+[=[      if (mprotect((void *)patch_page, page_size, PROT_READ | PROT_EXEC) != 0)
+        ERROR_LOG("failed to restore first page permissions after second-page mprotect failure");
+      return -1;]=])
