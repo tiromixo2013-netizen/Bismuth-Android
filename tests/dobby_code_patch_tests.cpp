@@ -8,7 +8,7 @@
 
 // Exported by the pinned Dobby POSIX backend. This test links the real patched
 // Dobby target rather than a local reimplementation of its page writer.
-int DobbyCodePatch(void *address, std::uint8_t *buffer, std::uint32_t buffer_size);
+extern "C" int DobbyCodePatch(void *address, std::uint8_t *buffer, std::uint32_t buffer_size);
 
 int main() {
     const long pageSizeLong = sysconf(_SC_PAGESIZE);
