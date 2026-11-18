@@ -167,10 +167,4 @@ does not stop the game/render threads, and does not validate Dobby trampoline
 coexistence with other mods. The Cocos hook option therefore remains OFF by
 default. No transform cache or render fast path is enabled.
 
-Validation status: the patch script and FetchContent wiring are committed,
-but an Android ARM64 build and fault-injection tests have not yet run. Required
-regression cases are: trampoline allocation failure, relocation failure,
-original-byte backup failure, first-page mprotect failure, second-page
-mprotect failure, successful hook + original trampoline call-through, and
-successful/failed DobbyDestroy restoration. Do not enable this in a normal
-player session until those checks and on-device coexistence tests pass.
+Validation status (2026-11-18): the patched Dobby source has passed the Android ARM64 configure/build gate, and the host reference/API tests plus APK helper tests have passed in CI. These are compile and existing regression checks only; they do not constitute runtime fault-injection tests. The trampoline-null accessor guard was added after the first successful build and must pass CI again. Runtime fault injection and on-device validation remain outstanding. Do not enable this in a normal player session until those checks and on-device coexistence tests pass.
