@@ -269,7 +269,8 @@ int main() {
     passive.recordStructuralMutation(false);
     const AtlasObservationSnapshot passiveStats = passive.snapshot();
     assert(passiveStats.quadWrites == 1u);
-    assert(passiveStats.structuralMutations == 1u);
+    // One unknown mutation plus the explicit capacity-resize attempt.
+    assert(passiveStats.structuralMutations == 2u);
     // Projection helper: identity MVP keeps clip-space x/y unchanged.
     const ClipMatrix4 identityMvp{
         1.f, 0.f, 0.f, 0.f,
