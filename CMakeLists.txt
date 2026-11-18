@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(BismuthAndroid VERSION 0.9.3 LANGUAGES C CXX)
 option(BISMUTH_BUILD_TESTS "Build host-side reference tests" ON)
 option(BISMUTH_ENABLE_GLES31 "Build the Android OpenGL ES 3.1 backend" OFF)
-option(BISMUTH_ENABLE_COCOS_HOOKS "Build the experimental passive Cocos2d hook adapter (unsafe until pinned Dobby failure handling is fixed)" OFF)
+option(BISMUTH_ENABLE_COCOS_HOOKS "Build the experimental passive Cocos2d hook adapter with the local pinned-Dobby patch (requires runtime validation)" OFF)
 option(BISMUTH_ENABLE_ATRACE "Add optional Android ATrace sections for Perfetto profiling" OFF)
 
 # Generate embedded shaders from the authoritative shader files.
