@@ -448,3 +448,20 @@ replace_once("source/InterceptRouting/InterceptRouting.h"
     else
 #endif
       GenRelocateCodeAndBranch((void *)code_addr, &origin, &relocated);]=])
+
+replace_once("source/Interceptor.h"
+[=[#include <stdlib.h>]=]
+[=[#include <stdlib.h>
+#if defined(DOBBY_TESTING)
+inline int (*dobby_test_restore_code_patch)(void *, uint8_t *, uint32_t) = nullptr;
+#endif]=])
+
+replace_once("source/Interceptor.h"
+[=[      auto result = DobbyCodePatch((void *)patched.addr(), origin_code_, patched.size);]=]
+[=[#if defined(DOBBY_TESTING)
+      auto result = dobby_test_restore_code_patch
+          ? dobby_test_restore_code_patch((void *)patched.addr(), origin_code_, patched.size)
+          : DobbyCodePatch((void *)patched.addr(), origin_code_, patched.size);
+#else
+      auto result = DobbyCodePatch((void *)patched.addr(), origin_code_, patched.size);
+#endif]=])
