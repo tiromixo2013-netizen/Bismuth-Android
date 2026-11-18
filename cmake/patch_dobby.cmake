@@ -226,6 +226,14 @@ replace_once("source/InterceptRouting/InstrumentRouting.h"
   }]=])
 
 replace_once("source/Interceptor.h"
+[=[    ~Entry() {
+    }]=]
+[=[    ~Entry() {
+      if (origin_code_)
+        operator delete(origin_code_);
+    }]=])
+
+replace_once("source/Interceptor.h"
 [=[    void backup_orig_code() {
       __FUNC_CALL_TRACE__();
       auto orig = (uint8_t *)this->addr;
