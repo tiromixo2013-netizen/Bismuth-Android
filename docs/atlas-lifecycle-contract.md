@@ -96,6 +96,13 @@ uploads conservatively advance the content revision. An unclassified or
 ambiguous mutation calls `invalidateUnknownMutation()`, which advances the
 structural revision and invalidates cached slot maps.
 
+The revision-only methods `invalidateQuadData()` and
+`invalidateStructuralMutation()` deliberately bypass telemetry counters.
+The live atlas mutation wrappers use them whenever passive telemetry is
+disabled, so a future cache cannot become stale merely because the user turned
+off the HUD/measurement counters. Telemetry gating controls measurement work;
+it must never gate correctness-critical cache invalidation.
+
 ## Native C ABI event bridge
 
 The Android shared library now exports a small C ABI bridge for an external
