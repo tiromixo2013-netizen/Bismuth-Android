@@ -163,11 +163,12 @@ and parent-child transform propagation). Therefore the current atlas revision
 tracker is an atlas-content/slot tracker, **not** a complete sprite-transform
 invalidation tracker.
 
-Capacity changes also need a distinct audit: the former `resizeCapacity`
-hook is intentionally absent after a prior recursive-hook crash. The
-`increaseTotalQuadsWith` observer is not proof that every reallocation path
-is covered. Until the capacity-growth call graph is traced and observed,
-capacity changes must invalidate all candidate-to-slot and quad-derived caches.
+At the time of this 2026-11-18 audit, the `resizeCapacity` hook was absent
+after a prior recursive-hook crash. The current source has since added a
+central detour for this symbol; its live behavior remains unverified. The
+`increaseTotalQuadsWith` observer alone is not proof that every reallocation
+path is covered. Until the central hook is validated on-device, capacity
+changes must invalidate all candidate-to-slot and quad-derived caches.
 
 ### Required gate before any transform cache
 
@@ -177,8 +178,8 @@ capacity changes must invalidate all candidate-to-slot and quad-derived caches.
    direct sprite setters.
 3. Establish how subclass overrides are represented and counted in actual
    batches; unknown implementations always use the original engine path.
-4. Trace all atlas capacity/reallocation paths, including the unhooked
-   `resizeCapacity` route.
+4. Validate the installed central `resizeCapacity` observer against normal
+   growth, same-capacity no-op, and allocation-failure reset paths.
 5. Keep the feature observation-only until the above coverage is demonstrated
    in a runtime trace. A missing event, ambiguous callback, or unknown class
    invalidates the entire relevant cache.
@@ -270,10 +271,12 @@ post-call success semantics are reviewed.
 
 ### Current decision
 
-No hierarchy or resize hooks are added in this pass. A transform cache remains
-ineligible: parent/child graph changes, subclass virtual dispatch, batch
-membership, Z-order changes, and capacity reallocations are not yet covered
-by a complete runtime observer. The original Cocos2d path remains authoritative.
+No hierarchy hooks are added in this pass. The central atlas resize hook is
+now present in source and the ARM64 build, but is not runtime-validated.
+A transform cache remains ineligible: parent/child graph changes, subclass
+virtual dispatch, batch membership, and Z-order changes are not covered by a
+complete runtime observer, and resize coverage still needs on-device proof.
+The original Cocos2d path remains authoritative.
 
 
 ## Capacity-resize call graph and failure semantics (2026-11-18)
@@ -341,13 +344,16 @@ independently verifying engine success.
 
 ### Hook decision
 
-The central resize symbol is a better observation point than separate
-client-family hooks, but it remains intentionally unhooked in this pass.
-Before adding it, review Dobby trampoline coexistence, partial-install
-rollback, recursive entry behavior, and the exact bool ABI on the target
-ARM64 build. In particular, do not use the false return to skip invalidation:
-the failure path can clear the atlas storage itself. No cache may be enabled
-until resize events are observed reliably on-device.
+The native adapter now resolves and installs the central
+`CCTextureAtlas::resizeCapacity(unsigned)` detour after verifying that the
+symbol belongs to the exact target module. Its wrapper calls the original
+function, then invalidates both slot and content revisions for every attempt,
+including a false return, because the failure path can clear atlas storage.
+The hook is included in the Android ARM64 compile and CI build, but it has not
+been exercised in a live game process. Dobby trampoline coexistence, recursive
+entry behavior, and the bool ABI therefore remain source/build-validated only;
+no cache may be enabled until growth, same-capacity no-op, and allocation
+failure are observed reliably on-device.
 
 
 ## Native hook-install state machine (2026-11-19)
