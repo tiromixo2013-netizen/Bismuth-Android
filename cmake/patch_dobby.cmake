@@ -70,7 +70,12 @@ replace_once("source/InterceptRouting/InterceptRouting.h"
 
   void GenerateRelocatedCode() {]=]
 [=[    if (!near_trampoline) {
-      trampoline = GenerateNormalTrampolineBuffer(from, to);
+#if defined(DOBBY_TESTING)
+      if (dobby_test_generate_normal_trampoline)
+        trampoline = dobby_test_generate_normal_trampoline(from, to);
+      else
+#endif
+        trampoline = GenerateNormalTrampolineBuffer(from, to);
     }
     if (!trampoline_addr() || !trampoline_size()) {
       error = 1;
@@ -423,3 +428,23 @@ replace_once("source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc"
 [=[      if (mprotect((void *)patch_page, page_size, PROT_READ | PROT_EXEC) != 0)
         ERROR_LOG("failed to restore first page permissions after second-page mprotect failure");
       return -1;]=])
+
+replace_once("source/InterceptRouting/InterceptRouting.h"
+[=[Trampoline *GenerateNearTrampolineBuffer(addr_t src, addr_t dst);
+Trampoline *GenerateNormalTrampolineBuffer(addr_t from, addr_t to);]=]
+[=[Trampoline *GenerateNearTrampolineBuffer(addr_t src, addr_t dst);
+Trampoline *GenerateNormalTrampolineBuffer(addr_t from, addr_t to);
+
+#if defined(DOBBY_TESTING)
+inline Trampoline *(*dobby_test_generate_normal_trampoline)(addr_t, addr_t) = nullptr;
+inline void (*dobby_test_relocate_code_and_branch)(void *, CodeMemBlock *, CodeMemBlock *) = nullptr;
+#endif]=])
+
+replace_once("source/InterceptRouting/InterceptRouting.h"
+[=[    GenRelocateCodeAndBranch((void *)code_addr, &origin, &relocated);]=]
+[=[#if defined(DOBBY_TESTING)
+    if (dobby_test_relocate_code_and_branch)
+      dobby_test_relocate_code_and_branch((void *)code_addr, &origin, &relocated);
+    else
+#endif
+      GenRelocateCodeAndBranch((void *)code_addr, &origin, &relocated);]=])
