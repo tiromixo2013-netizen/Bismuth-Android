@@ -51,6 +51,8 @@ std::size_t g_frameIntervalCursor = 0;
 std::size_t g_updateCount = 0;
 std::size_t g_hitchCount = 0;
 float g_hudRefreshAccumulator = 0.f;
+float g_percentileRefreshAccumulator = 0.f;
+float g_hudSyncAccumulator = 0.f;
 float g_cachedP50Ms = 0.f;
 float g_cachedP95Ms = 0.f;
 float g_cachedP99Ms = 0.f;
@@ -127,7 +129,9 @@ void pollShizukuBridge() {
     }
     const auto now = std::chrono::steady_clock::now();
     if (now < g_shizukuNextPoll) return;
-    g_shizukuNextPoll = now + std::chrono::milliseconds(250);
+    // Telemetry is deliberately polled at 1 Hz; the Companion keeps sampling
+    // independently, so the game thread does not need to drain the socket at 4 Hz.
+    g_shizukuNextPoll = now + std::chrono::seconds(1);
     if (g_shizukuConnected && now - g_shizukuLastSample > std::chrono::seconds(2)) {
         closeShizukuSocket();
         g_shizukuLastError = "telemetry timeout after 2s";
@@ -452,8 +456,8 @@ void syncHud(CCNode* controller) {
         return;
     }
     if (!g_bismuthHudPanel && controller) createHud(controller);
-    // Re-evaluate every frame so orientation/viewport changes cannot push it off-screen.
-    positionHudPanel();
+    // The game is landscape-locked; position once on creation rather than
+    // issuing redundant node transforms every frame.
 }
 
 void updateHud(float dt, double updateCpuMs) {
@@ -472,16 +476,21 @@ void updateHud(float dt, double updateCpuMs) {
         g_frameIntervalCount = std::min(g_frameIntervalCount + 1, g_frameIntervalsMs.size());
         if (frameMs > 33.3f) ++g_hitchCount;
         ++g_updateCount;
-        if ((g_updateCount % 12u) == 0u &&
-            Mod::get()->getSettingValue<bool>("hud-advanced")) refreshPercentiles();
+        g_percentileRefreshAccumulator += dt;
+        if (g_percentileRefreshAccumulator >= 1.0f) {
+            g_percentileRefreshAccumulator = std::fmod(g_percentileRefreshAccumulator, 1.0f);
+            if (Mod::get()->getSettingValue<bool>("hud-advanced")) refreshPercentiles();
+        }
     }
 
     // All device telemetry is sampled by the Companion process. The game
     // thread only reads the latest in-memory snapshot; never scan /proc or
     // /sys from the frame/update path.
+    // Rebuilding a TTF label regenerates its texture. Limit that work to 1 Hz
+    // instead of 4 Hz; frame-time samples are still collected every update.
     g_hudRefreshAccumulator += std::max(0.f, dt);
-    if (g_hudRefreshAccumulator < 0.25f) return;
-    g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 0.25f);
+    if (g_hudRefreshAccumulator < 1.0f) return;
+    g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 1.0f);
 
     const bool cpuEnabled = Mod::get()->getSettingValue<bool>("monitor-cpu");
     const bool gpuEnabled = Mod::get()->getSettingValue<bool>("monitor-gpu");
@@ -580,8 +589,12 @@ public:
         g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
         g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
         g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
+        g_hudSyncAccumulator += std::max(0.f, dt);
+        if (g_hudSyncAccumulator >= 1.0f) {
+            g_hudSyncAccumulator = std::fmod(g_hudSyncAccumulator, 1.0f);
+            syncHud(this);
+        }
         pollShizukuBridge();
-        syncHud(this);
         if (g_bismuthHudPanel) updateHud(dt, m_lastWorkMs);
         const auto end = std::chrono::steady_clock::now();
         m_lastWorkMs = std::chrono::duration<double, std::milli>(end - start).count();
@@ -610,6 +623,8 @@ class $modify(BismuthSceneNode, CCNode) {
         g_updateCount = 0;
         g_hitchCount = 0;
         g_hudRefreshAccumulator = 0.f;
+        g_percentileRefreshAccumulator = 0.f;
+        g_hudSyncAccumulator = 0.f;
         g_cachedP50Ms = g_cachedP95Ms = g_cachedP99Ms = 0.f;
         g_batchDrawCallsCurrent.store(0, std::memory_order_relaxed);
         g_batchChildrenCurrent.store(0, std::memory_order_relaxed);
