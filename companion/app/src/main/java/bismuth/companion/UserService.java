@@ -130,23 +130,20 @@ public final class UserService extends IBismuthUserService.Stub {
         try {
             String raw = readText(path).trim();
             if (raw.isEmpty()) return -1;
-            // Accept only an unambiguous scalar percentage.
             String token = raw.endsWith("%") ? raw.substring(0, raw.length() - 1).trim() : raw;
-            if (!token.matches("[0-9]+(?:\\\\.[0-9]+)?")) return -1;
             double value = Double.parseDouble(token);
             return (Double.isFinite(value) && value >= 0 && value <= 100) ? value : -1;
         } catch (Exception ignored) { return -1; }
     }
 
-    // Qualcomm KGSL gpubusy reports two counters: busy time and elapsed time.
-    // Unlike cumulative devfreq counters, this node commonly reports one sample window.
+    // Qualcomm KGSL gpubusy reports busy time followed by elapsed time.
     private static double readGpuBusyPair(String path) {
         try {
             String raw = readText(path).trim();
-            String[] values = raw.split("\\\\s+");
-            if (values.length != 2) return -1;
-            double busy = Double.parseDouble(values[0]);
-            double total = Double.parseDouble(values[1]);
+            java.util.StringTokenizer values = new java.util.StringTokenizer(raw);
+            if (values.countTokens() != 2) return -1;
+            double busy = Double.parseDouble(values.nextToken());
+            double total = Double.parseDouble(values.nextToken());
             if (!Double.isFinite(busy) || !Double.isFinite(total) || busy < 0 || total <= 0 || busy > total) return -1;
             return Math.max(0, Math.min(100, busy * 100.0 / total));
         } catch (Exception ignored) { return -1; }
