@@ -8,6 +8,7 @@
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace bismuth {
@@ -31,7 +32,7 @@ public:
         Entry entry{};
         entry.bounds = bounds;
         entry.order = nextOrder_++;
-        if (!isValidBounds(bounds) || !makeKeys(bounds, entry.keys)) {
+        if (!isValidBounds(bounds) || !makeKeys(bounds, entry.keys, maxCellsPerEntry_)) {
             entry.overflow = true;
             overflow_.insert(id);
         } else {
@@ -47,7 +48,7 @@ public:
         eraseMembership(id, it->second);
         it->second.bounds = bounds;
         it->second.keys.clear();
-        it->second.overflow = !isValidBounds(bounds) || !makeKeys(bounds, it->second.keys);
+        it->second.overflow = !isValidBounds(bounds) || !makeKeys(bounds, it->second.keys, maxCellsPerEntry_);
         if (it->second.overflow) overflow_.insert(id);
         else addToCells(id, it->second.keys);
         return true;
