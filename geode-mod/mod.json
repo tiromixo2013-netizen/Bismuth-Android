@@ -22,13 +22,13 @@
     "hud-enabled": {
       "type": "bool",
       "name": "Live performance HUD",
-      "description": "Show a compact translucent top-left overlay with prominent FPS, frame time, CPU/GPU usage bars and optional memory details.",
+      "description": "Show a compact translucent top-left text overlay with FPS, device CPU/GPU load, system RAM, temperatures and optional frame percentiles.",
       "default": true
     },
     "hud-advanced": {
       "type": "bool",
       "name": "Advanced frame analysis",
-      "description": "Show frame P50/P95/P99, estimated 1% low, HUD controller CPU wall time P50/P95/P99, hitch count, and sample count. This is game-loop timing, not display-present FPS.",
+      "description": "Show frame P95 and estimated 1% low from a rolling frame-time sample window. This is game-loop timing, not display-present FPS.",
       "default": true
     },
     "hud-graph": {
@@ -40,25 +40,25 @@
     "monitor-cpu": {
       "type": "bool",
       "name": "Measure game CPU usage",
-      "description": "Sample this game's process CPU time from /proc/self/stat. The percentage is normalized across online CPU cores.",
+      "description": "Receive device-wide CPU utilization from Bismuth Companion over Shizuku. Shows N/A when the companion bridge is unavailable.",
       "default": true
     },
     "monitor-gpu": {
       "type": "bool",
       "name": "Measure GPU usage",
-      "description": "Try cumulative GPU busy/total counters exposed by the Android devfreq driver (including supported Mali drivers). Shows N/A when the kernel does not expose readable counters.",
+      "description": "Receive GPU busy utilization from Bismuth Companion over Shizuku (supported Mali and Adreno kernel counters). Shows N/A when the kernel does not expose a real readable utilization source.",
       "default": true
     },
     "monitor-thermal": {
       "type": "bool",
       "name": "Measure CPU/GPU temperature",
-      "description": "Search readable thermal-zone type names for CPU and GPU sensors. OEM sensor labels vary; unavailable readings show N/A.",
+      "description": "Receive CPU/GPU thermal-zone readings from Bismuth Companion over Shizuku. OEM sensor labels vary; unavailable readings show N/A.",
       "default": true
     },
     "hud-memory": {
       "type": "bool",
-      "name": "Process memory (RSS)",
-      "description": "Show resident memory for the whole game process from /proc/self/statm; this is not native-heap-only memory.",
+      "name": "System RAM usage",
+      "description": "Show device RAM used/total from Bismuth Companion over Shizuku.",
       "default": true
     },
     "shizuku-bridge-enabled": {
