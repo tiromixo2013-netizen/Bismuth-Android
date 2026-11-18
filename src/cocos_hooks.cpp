@@ -268,12 +268,20 @@ void hookedSpriteUpdateTransform(void* self) {
     releaseObserver(observer);
 }
 
+void recordQuadMutation() {
+    AtlasPassiveObserver* observer = acquireObserver();
+    if (observer) {
+        if (g_passiveTelemetryGate.enabled())
+            observer->recordQuadWrite(true);
+        else
+            observer->invalidateQuadData();
+    }
+    releaseObserver(observer);
+}
+
 void hookedUpdateQuad(void* self, void* quad, unsigned int index) {
     if (g_originalUpdateQuad) g_originalUpdateQuad(self, quad, index);
-    if (!g_passiveTelemetryGate.enabled()) return;
-    AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordQuadWrite(true);
-    releaseObserver(observer);
+    recordQuadMutation();
 }
 
 bool tryGpuIndexedDraw(void* atlas, unsigned int quadCount, unsigned int start) {
@@ -364,7 +372,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     // on every atlas draw unless the experimental replacement path is enabled.
     if (!bridgeEnabled) {
         std::uint8_t dirtyBefore = 0;
-        if (telemetryEnabled && self && count != 0)
+        if ((telemetryEnabled || g_observer.load(std::memory_order_acquire) != nullptr) && self && count != 0)
             std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
                         sizeof(dirtyBefore));
         callOriginalAtlasDraw(self, count, start);
@@ -387,7 +395,7 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     g_activeAtlasCount = count;
     g_activeAtlasStart = start;
     std::uint8_t dirtyBefore = 0;
-    if (telemetryEnabled && self && count != 0)
+    if ((telemetryEnabled || g_observer.load(std::memory_order_acquire) != nullptr) && self && count != 0)
         std::memcpy(&dirtyBefore, static_cast<const std::uint8_t*>(self) + 0x48,
                     sizeof(dirtyBefore));
     callOriginalAtlasDraw(self, count, start);
@@ -402,19 +410,20 @@ void hookedDrawNumberOfQuads(void* self, unsigned int count, unsigned int start)
     }
 }
 
-void hookedRemoveAllQuads(void* self) {
-    if (g_originalRemoveAllQuads) g_originalRemoveAllQuads(self);
-    if (!g_passiveTelemetryGate.enabled()) return;
+void recordStructuralMutation() {
     AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordStructuralMutation(true);
+    if (observer) {
+        if (g_passiveTelemetryGate.enabled())
+            observer->recordStructuralMutation(true);
+        else
+            observer->invalidateStructuralMutation();
+    }
     releaseObserver(observer);
 }
 
-void recordStructuralMutation() {
-    if (!g_passiveTelemetryGate.enabled()) return;
-    AtlasPassiveObserver* observer = acquireObserver();
-    if (observer) observer->recordStructuralMutation(true);
-    releaseObserver(observer);
+void hookedRemoveAllQuads(void* self) {
+    if (g_originalRemoveAllQuads) g_originalRemoveAllQuads(self);
+    recordStructuralMutation();
 }
 
 void hookedInsertQuad(void* self, void* quad, unsigned int index) {
