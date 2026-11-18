@@ -1,0 +1,35 @@
+name: Build Bismuth Companion APK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/shizuku-companion-telemetry
+  pull_request:
+    paths:
+      - 'companion/**'
+      - '.github/workflows/shizuku-companion.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Companion and Geode bridge contract
+        run: python3 companion/tools/verify_bridge_contract.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Build Companion debug APK
+        working-directory: companion
+        run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bismuth-companion-debug
+          path: companion/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

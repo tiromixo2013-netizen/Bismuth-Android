@@ -222,3 +222,54 @@ read-modify-write pair from the common no-observer path.
 ## Paired observer release guard
 
 The callback release helper now accepts the acquired observer pointer and only decrements the active-callback count when acquisition returned a non-null observer. This keeps the null-observer fast path balanced: a failed acquisition performs neither increment nor decrement, while a successful acquisition performs exactly one of each.
+
+
+---
+
+## Geode live HUD and Advanced Monitor
+
+The safe-mode Geode UI now has a separate gameplay HUD. It deliberately does
+not install the native Cocos observer hooks.
+
+- The displayed FPS is derived from the `PlayLayer::update(float dt)` delta
+  and is labelled **game-loop FPS**. It is not physical display-present FPS.
+- Frame time is the same update delta in milliseconds.
+- CPU time is the wall-clock duration of the original
+  `PlayLayer::update` call, measured around the call. It is not total process
+  CPU utilization.
+- The rolling 120-sample window reports nearest-rank p50/p95/p99 update
+  intervals. The displayed `1% LOW*` is an estimate derived from p99; it is
+  not a platform frame-pacing measurement.
+- The hitch counter counts update intervals above 33.3 ms. It is a simple
+  threshold counter, not a diagnosis of the cause of a hitch.
+- The optional 24-character graph visualizes recent update intervals:
+  `.` below 16.7 ms, `-` from 16.7 to 25 ms, `=` from 25 to 33.3 ms,
+  and `#` at or above 33.3 ms.
+- Text refresh is throttled to 4 Hz; the rolling samples are still recorded
+  on each valid PlayLayer update.
+- GPU usage, GPU execution time, draw calls, RAM, texture memory, and vertex
+  counts remain unavailable in this Geode HUD. They must not be filled with
+  estimates presented as measured values.
+
+### Crash-path precaution
+
+The earlier crash report recorded SIGSEGV in `libc memcpy` from
+`CCSpriteBatchNode::appendChild` while `CCLabelBMFont` was building
+level-page text. The trace also included `node-ids` and `QOLMod`, but did not
+prove a unique culprit. To avoid adding another BMFont sprite-child batch to
+that same path, the Geode HUD uses a standalone `CCLabelTTF` and throttles
+texture/string refreshes. This reduces overlap with the recorded failure path;
+it does not establish a root-cause fix. The original level-page scrolling
+reproduction remains a required on-device crash test.
+
+
+## Process resident-memory HUD metric
+
+The Geode HUD optionally reads the second field of `/proc/self/statm` at the
+existing 4 Hz text-refresh cadence and converts resident pages using
+`sysconf(_SC_PAGESIZE)`. It is labelled **Process RSS** because it includes
+resident pages for the whole process; it is not a native-heap-only measurement
+and does not identify allocations by subsystem. If procfs access or parsing
+fails, the HUD displays N/A. The metric can be disabled with the
+`hud-memory` setting. This sampling does not allocate GL resources or perform
+GPU readback.

@@ -3,6 +3,7 @@
 #include "bismuth/culling_types.hpp"
 #include <array>
 #include <cmath>
+#include <limits>
 
 namespace bismuth {
 

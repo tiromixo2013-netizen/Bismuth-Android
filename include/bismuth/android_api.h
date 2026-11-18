@@ -25,7 +25,9 @@ enum BismuthCapability {
     BISMUTH_CAP_GPU_TIMER_QUERY = 1u << 7
 };
 
-/* Bounds must be finite and normalized (left <= right, bottom <= top). Invalid bounds are culled. */
+/* Bounds are normally finite and normalized (left <= right, bottom <= top).
+ * Invalid bounds are conservatively retained as visible; the original renderer
+ * performs final clipping. */
 /* Matches the 32-byte std430 Candidate record used by the compute shaders. */
 typedef struct BismuthCandidate {
     float left;

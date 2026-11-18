@@ -3,6 +3,27 @@
 #include "bismuth/capacity_growth.hpp"
 #include <cmath>
 #if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
+#pragma push_macro("glBindVertexArray")
+#pragma push_macro("glDeleteVertexArrays")
+#pragma push_macro("glGenVertexArrays")
+#pragma push_macro("glBindVertexArrayOES")
+#pragma push_macro("glDeleteVertexArraysOES")
+#pragma push_macro("glGenVertexArraysOES")
+#undef glBindVertexArray
+#undef glDeleteVertexArrays
+#undef glGenVertexArrays
+#undef glBindVertexArrayOES
+#undef glDeleteVertexArraysOES
+#undef glGenVertexArraysOES
+#include <GLES3/gl31.h>
+#pragma pop_macro("glGenVertexArraysOES")
+#pragma pop_macro("glDeleteVertexArraysOES")
+#pragma pop_macro("glBindVertexArrayOES")
+#pragma pop_macro("glGenVertexArrays")
+#pragma pop_macro("glDeleteVertexArrays")
+#pragma pop_macro("glBindVertexArray")
+#endif
+#if defined(__ANDROID__) && defined(BISMUTH_ANDROID_GLES31)
 #include <embedded_shaders.hpp>
 namespace bismuth {
 namespace {
@@ -290,11 +311,8 @@ bool Gles31Culler::dispatch(const Rect& view, std::uint32_t count, std::string* 
         if (error) *error = message;
         return false;
     };
-    if (!std::isfinite(view.left) || !std::isfinite(view.bottom) ||
-        !std::isfinite(view.right) || !std::isfinite(view.top) ||
-        view.left > view.right || view.bottom > view.top) {
-        return failClosed("View rectangle must contain finite, non-inverted bounds");
-    }
+    // Pass the original view through to the shader. The classify stage
+    // treats a malformed view as "keep all", avoiding false-negative culling.
     if (count == 0) {
         clearIndirectCommand(indirectCommand_);
         clearIndexedCommand(indexedCommand_);

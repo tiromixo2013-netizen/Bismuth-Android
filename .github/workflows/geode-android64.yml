@@ -1,0 +1,72 @@
+name: Build Bismuth Geode Android64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/geode-pause-ui
+      - feature/shizuku-companion-telemetry
+  pull_request:
+
+jobs:
+  build:
+    name: Android64 Geode package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Geode mod
+        id: build
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          path: geode-mod
+          target: Android64
+          combine: true
+      - name: Audit packaged HUD and Shizuku client
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.build.outputs.build-output }}"
+          if [ -d "$PACKAGE" ]; then
+            PACKAGE="$(find "$PACKAGE" -maxdepth 2 -type f -name '*.geode' -print -quit)"
+          fi
+          if [ -z "$PACKAGE" ] || [ ! -f "$PACKAGE" ]; then
+            echo "::error::Geode package was not found at the build output path."
+            exit 1
+          fi
+          LIB_PATH="$(unzip -Z1 "$PACKAGE" | grep -E '\.so$' | head -n 1 || true)"
+          if [ -z "$LIB_PATH" ]; then
+            echo "::error::No shared library (.so) was found inside the Geode package."
+            unzip -Z1 "$PACKAGE"
+            exit 1
+          fi
+          unzip -p "$PACKAGE" "$LIB_PATH" > /tmp/bismuth-geode.so
+          strings /tmp/bismuth-geode.so > /tmp/bismuth-geode.strings
+          nm -C /tmp/bismuth-geode.so > /tmp/bismuth-geode.symbols
+          for marker in 'BISMUTH' 'FPS --' 'CPU --' 'PlayLayer entered through CCNode lifecycle hook' 'connect timeout after 3s' 'telemetry timeout after 2s' 'server closed connection'; do
+            if ! grep -Fq "$marker" /tmp/bismuth-geode.strings; then
+              echo "::error::Missing expected binary string: $marker"
+              exit 1
+            fi
+            echo "PASS string: $marker"
+          done
+          for symbol in 'AsStaticFunction_onEnter' 'BismuthHudController::update'; do
+            if ! grep -Fq "$symbol" /tmp/bismuth-geode.symbols; then
+              echo "::error::Missing expected binary symbol: $symbol"
+              exit 1
+            fi
+            echo "PASS symbol: $symbol"
+          done
+          if grep -Fq 'AsStaticFunction_postUpdate' /tmp/bismuth-geode.symbols; then
+            echo "::error::Unsafe PlayLayer::postUpdate hook is still present."
+            exit 1
+          fi
+          echo "PASS: no PlayLayer::postUpdate hook in packaged binary."
+          echo "Packaged Geode binary contains the scene-owned HUD controller and Shizuku bridge client."
+      - name: Upload installable Geode package
+        uses: actions/upload-artifact@v4
+        with:
+          name: bismuth-android64-geode
+          path: ${{ steps.build.outputs.build-output }}
+          if-no-files-found: error
+          retention-days: 14

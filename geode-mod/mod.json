@@ -1,0 +1,84 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "android": "2.2081"
+  },
+  "id": "bismuth.android",
+  "name": "Bismuth Android",
+  "version": "0.9.6",
+  "developer": "Bismuth Project",
+  "description": "Android ARM64 performance monitor with a compact movable-corner HUD, scene-owned safe update controller, frame analysis, CPU, best-effort GPU, thermal and renderer telemetry.",
+  "tags": [
+    "performance",
+    "utility"
+  ],
+  "settings": {
+    "diagnostics": {
+      "type": "bool",
+      "name": "Diagnostic logging",
+      "description": "Write Bismuth safe-mode initialization information to the Geode log.",
+      "default": true
+    },
+    "hud-enabled": {
+      "type": "bool",
+      "name": "Live performance HUD",
+      "description": "Show a compact translucent performance overlay.",
+      "default": true
+    },
+    "hud-position": {
+      "type": "string",
+      "name": "HUD screen corner",
+      "description": "Choose which corner of the gameplay screen contains the live statistics. Changes apply within about one second.",
+      "default": "top-left",
+      "enum": ["top-left", "top-right", "bottom-left", "bottom-right"]
+    },
+    "hud-advanced": {
+      "type": "bool",
+      "name": "Advanced frame analysis",
+      "description": "Show frame P95 and estimated 1% low from a rolling frame-time sample window. This is game-loop timing, not display-present FPS.",
+      "default": true
+    },
+    "hud-graph": {
+      "type": "bool",
+      "name": "Frame cadence graph",
+      "description": "Show a rolling 24-sample frame cadence graph in Advanced Frame Analysis.",
+      "default": true
+    },
+    "monitor-cpu": {
+      "type": "bool",
+      "name": "Measure game CPU usage",
+      "description": "Receive device-wide CPU utilization from Bismuth Companion over Shizuku. Shows N/A when the companion bridge is unavailable.",
+      "default": true
+    },
+    "monitor-gpu": {
+      "type": "bool",
+      "name": "Measure GPU usage",
+      "description": "Receive GPU busy utilization from Bismuth Companion over Shizuku (supported Mali and Adreno kernel counters). Shows N/A when the kernel does not expose a real readable utilization source.",
+      "default": true
+    },
+    "monitor-thermal": {
+      "type": "bool",
+      "name": "Measure CPU/GPU temperature",
+      "description": "Receive CPU/GPU thermal-zone readings from Bismuth Companion over Shizuku. OEM sensor labels vary; unavailable readings show N/A.",
+      "default": true
+    },
+    "hud-memory": {
+      "type": "bool",
+      "name": "System RAM usage",
+      "description": "Show device RAM used/total from Bismuth Companion over Shizuku.",
+      "default": true
+    },
+    "shizuku-bridge-enabled": {
+      "type": "bool",
+      "name": "Shizuku telemetry bridge",
+      "description": "Receive device CPU/GPU/thermal and system RAM telemetry from Bismuth Companion over localhost. Start the companion bridge before launching gameplay.",
+      "default": true
+    },
+    "renderer-telemetry": {
+      "type": "bool",
+      "name": "SpriteBatch renderer telemetry",
+      "description": "Count real CCSpriteBatchNode draw invocations and child nodes and measure CPU time spent in each batch draw call. This is CPU submission time, not GPU execution time.",
+      "default": true
+    }
+  }
+}
