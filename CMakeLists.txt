@@ -85,6 +85,11 @@ if(BISMUTH_BUILD_TESTS)
   target_include_directories(bismuth_android_api_c_test PRIVATE include)
   add_test(NAME android_api_header_c_test COMMAND bismuth_android_api_c_test)
 
+  add_executable(bismuth_hook_install_state_tests tests/hook_install_state_tests.cpp)
+  target_include_directories(bismuth_hook_install_state_tests PRIVATE include)
+  target_compile_features(bismuth_hook_install_state_tests PRIVATE cxx_std_17)
+  add_test(NAME hook_install_state_tests COMMAND bismuth_hook_install_state_tests)
+
   # Exercise the exact patched POSIX Dobby code writer on Linux. This validates
   # page-boundary failure behavior without installing hooks into a live process.
   if(UNIX AND NOT APPLE AND NOT ANDROID)
