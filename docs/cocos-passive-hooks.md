@@ -142,7 +142,7 @@ The patch makes routing construction fail closed:
 - A missing trampoline buffer is detected before relocation or target patching.
 - Relocation must produce both a non-empty overwritten-instruction range and a
   non-empty relocated trampoline.
-- The original target bytes must be backed up before Active() can patch them.
+- The original target bytes must be backed up before Active() can patch them. Backup storage uses non-throwing malloc and rejects allocation failure before target patching.
 - DobbyHook and DobbyInstrument stop immediately on any preparation error;
   they do not call Active() after a failed build.
 - The optional original-trampoline output is initialized to null and is only
@@ -167,4 +167,4 @@ does not stop the game/render threads, and does not validate Dobby trampoline
 coexistence with other mods. The Cocos hook option therefore remains OFF by
 default. No transform cache or render fast path is enabled.
 
-Validation status (2026-11-18): the patched Dobby source has passed the Android ARM64 configure/build gate, and the host reference/API tests plus APK helper tests have passed in CI. These are compile and existing regression checks only; they do not constitute runtime fault-injection tests. The trampoline-null accessor guard was added after the first successful build and must pass CI again. Runtime fault injection and on-device validation remain outstanding. Do not enable this in a normal player session until those checks and on-device coexistence tests pass.
+Validation status (2026-11-18): the patched Dobby source has passed the Android ARM64 configure/build gate, and the host reference/API tests plus APK helper tests have passed in CI. These are compile and existing regression checks only; they do not constitute runtime fault-injection tests. The trampoline-null accessor and non-throwing backup-allocation guards were added after the first successful build and must pass CI again. Runtime fault injection and on-device validation remain outstanding. Do not enable this in a normal player session until those checks and on-device coexistence tests pass.
