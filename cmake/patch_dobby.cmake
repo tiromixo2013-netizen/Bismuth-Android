@@ -18,6 +18,34 @@ function(replace_once relative old_text new_text)
 endfunction()
 
 replace_once("source/InterceptRouting/InterceptRouting.h"
+[=[  addr_t trampoline_addr() {
+    if (near_trampoline)
+      return near_trampoline->addr();
+    return trampoline->addr();
+  }]=]
+[=[  addr_t trampoline_addr() {
+    if (near_trampoline)
+      return near_trampoline->addr();
+    if (!trampoline)
+      return 0;
+    return trampoline->addr();
+  }]=])
+
+replace_once("source/InterceptRouting/InterceptRouting.h"
+[=[  size_t trampoline_size() {
+    if (near_trampoline)
+      return near_trampoline->size();
+    return trampoline->size();
+  }]=]
+[=[  size_t trampoline_size() {
+    if (near_trampoline)
+      return near_trampoline->size();
+    if (!trampoline)
+      return 0;
+    return trampoline->size();
+  }]=])
+
+replace_once("source/InterceptRouting/InterceptRouting.h"
 [=[  virtual void Active() {
     __FUNC_CALL_TRACE__();
     auto ret = DobbyCodePatch((void *)entry->addr, (uint8_t *)trampoline_addr(), trampoline_size());
