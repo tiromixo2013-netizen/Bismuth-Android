@@ -130,7 +130,11 @@ public final class UserService extends IBismuthUserService.Stub {
         try {
             String raw = readText(path).trim();
             if (raw.isEmpty()) return -1;
-            String token = raw.split("\\s+")[0].replace("%", "");
+            // Accept only an unambiguous scalar percentage. Some Mali nodes print
+            // multiple counters on one line; treating the first counter as a
+            // percentage would silently publish a false GPU usage value.
+            String token = raw.endsWith("%") ? raw.substring(0, raw.length() - 1).trim() : raw;
+            if (!token.matches("[0-9]+(?:\\\\.[0-9]+)?")) return -1;
             double value = Double.parseDouble(token);
             return (Double.isFinite(value) && value >= 0 && value <= 100) ? value : -1;
         } catch (Exception ignored) { return -1; }
@@ -168,7 +172,9 @@ public final class UserService extends IBismuthUserService.Stub {
             "/sys/class/misc/mali0/device/utilisation",
             "/sys/class/misc/mali0/device/utilization",
             "/sys/devices/platform/mali/utilisation",
-            "/sys/devices/platform/mali/utilization"
+            "/sys/devices/platform/mali/utilization",
+            "/sys/class/misc/mali0/device/load",
+            "/sys/class/misc/mali0/device/gpu_busy"
         };
         for (String path : direct) {
             double value = readGpuPercent(path);
@@ -203,6 +209,13 @@ public final class UserService extends IBismuthUserService.Stub {
                 value = readGpuPercent(new File(d, "utilization").getPath());
                 if (value >= 0) return value;
                 value = gpuCounterLoad(d);
+                if (value >= 0) return value;
+                // Some MTK kernels expose the devfreq device through a symlink
+                // and keep the counters one level below its device directory.
+                File device = new File(d, "device");
+                value = readGpuPercent(new File(device, "load").getPath());
+                if (value >= 0) return value;
+                value = gpuCounterLoad(device);
                 if (value >= 0) return value;
             } catch (Exception ignored) {}
         }
