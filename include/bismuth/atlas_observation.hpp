@@ -97,6 +97,8 @@ public:
     // Conservative invalidation for an upload attempt whose GL success cannot
     // be observed without consuming or changing the game's GL error state.
     void invalidateQuadData() noexcept { revisions_.recordQuadWrite(); }
+    // Cache invalidation must remain active even when optional telemetry is off.
+    void invalidateStructuralMutation() noexcept { revisions_.recordStructuralMutation(); }
     void invalidateUnknownMutation() noexcept {
         revisions_.recordStructuralMutation();
         counters_.recordStructuralMutation();
