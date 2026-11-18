@@ -193,3 +193,26 @@ after that can we design an opt-in cache with original-path fallback.
 No rendering bypass or transform cache has been implemented or enabled by
 this binary inspection. No visual-equivalence, runtime, or FPS test has been
 performed yet.
+
+
+### Exported sprite-vtable slot census
+
+A relocation-table pass checked the vtable entry corresponding to virtual byte
+offset `+0x308` (vtable object address plus the two-word Itanium ABI header
+and `0x308`). In the exported sprite-named vtables present in this ELF, the
+entry resolved either to `CCSprite::updateTransform()` (`0x00b161d0`) or
+`CCNode::updateTransform()` (`0x00acabf8`). Examples resolving to the
+CCSprite implementation include `CCSprite`, `CCSpritePlus`,
+`CCSpriteCOpacity`, `CCSpriteWithHue`, `CCSpriteGrayscale`,
+`CCSpriteExtra`, `CCAnimatedSprite`, `CCPartAnimSprite`,
+`GJRobotSprite`, `GJSpiderSprite`, `GJChestSprite`, and
+`GravityEffectSprite`. Examples resolving to the CCNode implementation
+include `GJSmartBlockPreviewSprite`, `GauntletSprite`,
+`CCScale9Sprite`, `CCMenuItemSprite`, and `GJBigSprite`.
+
+This is a useful binary-level census of exported vtables, not proof that every
+runtime object or dynamically generated class is represented. It also does
+not cover vtables whose RTTI/symbols are absent, objects whose vptr changes at
+runtime, or third-party mods adding subclasses. Therefore it narrows the
+known override question but does not remove the need for a conservative
+unknown-class fallback and runtime validation.
