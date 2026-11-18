@@ -339,26 +339,26 @@ public final class UserService extends IBismuthUserService.Stub {
         for (String path : paths) {
             File file = new File(path);
             if (!file.exists()) {
-                out.append("\\n").append(path).append(" = missing");
+                out.append("\n").append(path).append(" = missing");
                 continue;
             }
             found++;
             try {
                 String raw = readText(path);
                 double percent = parseGpuPercent(raw);
-                out.append("\\n").append(path).append(" = ")
+                out.append("\n").append(path).append(" = ")
                    .append(raw == null ? "empty" : raw.trim())
                    .append(" [readable, percent=").append(percent).append("%]");
             } catch (Exception e) {
-                out.append("\\n").append(path).append(" = exists, unreadable (")
+                out.append("\n").append(path).append(" = exists, unreadable (")
                    .append(e.getClass().getSimpleName()).append(")");
             }
         }
-        out.append("\\nExisting direct GPU nodes: ").append(found).append("/").append(paths.length);
+        out.append("\nExisting direct GPU nodes: ").append(found).append("/").append(paths.length);
         File[] devfreq = new File("/sys/class/devfreq").listFiles();
-        if (devfreq == null) out.append("\\n/sys/class/devfreq = unavailable");
+        if (devfreq == null) out.append("\n/sys/class/devfreq = unavailable");
         else {
-            out.append("\\nDevfreq nodes:");
+            out.append("\nDevfreq nodes:");
             for (File node : devfreq) {
                 String name = node.getName();
                 try {
@@ -368,7 +368,7 @@ public final class UserService extends IBismuthUserService.Stub {
                 out.append(" ").append(name);
             }
         }
-        out.append("\\nDetected GPU utilization = ").append(gpuLoad()).append("%");
+        out.append("\nDetected GPU utilization = ").append(gpuLoad()).append("%");
         return out.toString();
     }
 
@@ -422,20 +422,20 @@ public final class UserService extends IBismuthUserService.Stub {
         File[] zones = new File("/sys/class/thermal").listFiles((d,n) -> n.startsWith("thermal_zone"));
         int count = 0;
         if (zones != null) for (File z : zones) {
-            if (count++ >= 18) { out.append("\\n…"); break; }
+            if (count++ >= 18) { out.append("\n…"); break; }
             try {
                 String type = readText(new File(z, "type").getPath());
                 String raw = readText(new File(z, "temp").getPath());
-                out.append("\\n").append(z.getName()).append(" [").append(type).append("]=").append(raw);
-            } catch (Exception e) { out.append("\\n").append(z.getName()).append(" [unreadable]"); }
+                out.append("\n").append(z.getName()).append(" [").append(type).append("]=").append(raw);
+            } catch (Exception e) { out.append("\n").append(z.getName()).append(" [unreadable]"); }
         }
-        if (count == 0) out.append("\\nNo readable thermal_zone entries");
+        if (count == 0) out.append("\nNo readable thermal_zone entries");
         File[] hwmons = new File("/sys/class/hwmon").listFiles((d,n) -> n.startsWith("hwmon"));
         if (hwmons != null) for (File hw : hwmons) try {
             File name = new File(hw, "name");
-            if (name.isFile()) out.append("\\nhwmon ").append(hw.getName()).append(": ").append(readText(name.getPath()));
+            if (name.isFile()) out.append("\nhwmon ").append(hw.getName()).append(": ").append(readText(name.getPath()));
         } catch (Exception ignored) {}
-        out.append("\\nMatched CPU=").append(temperature("cpu")).append("C GPU=").append(temperature("gpu")).append("C");
+        out.append("\nMatched CPU=").append(temperature("cpu")).append("C GPU=").append(temperature("gpu")).append("C");
         return out.toString();
     }
     private static long[] memory() {
