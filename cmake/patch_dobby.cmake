@@ -292,7 +292,12 @@ replace_once("source/Interceptor.h"
         return false;
       auto orig = (uint8_t *)this->addr;
       uint32_t tramp_size = this->patched.size;
+#if defined(DOBBY_TESTING)
+      origin_code_ = (uint8_t *)(dobby_test_allocate_backup
+          ? dobby_test_allocate_backup(tramp_size) : malloc(tramp_size));
+#else
       origin_code_ = (uint8_t *)malloc(tramp_size);
+#endif
       if (!origin_code_)
         return false;
       memcpy(origin_code_, orig, tramp_size);
@@ -454,6 +459,7 @@ replace_once("source/Interceptor.h"
 [=[#include <stdlib.h>
 #if defined(DOBBY_TESTING)
 inline int (*dobby_test_restore_code_patch)(void *, uint8_t *, uint32_t) = nullptr;
+inline void *(*dobby_test_allocate_backup)(size_t) = nullptr;
 #endif]=])
 
 replace_once("source/Interceptor.h"
