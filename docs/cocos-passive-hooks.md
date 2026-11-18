@@ -85,12 +85,12 @@ before checking `routing->error`. If that later error check fails, Dobby returns
 an error before publishing the original trampoline and before registering the
 entry in its interceptor table. In that failure shape, the target may already
 be patched, the wrapper may have no original-function pointer, and
-`DobbyDestroy(target)` cannot find the unregistered entry. The current
-installer's poisoned state prevents a second attempt but cannot repair this
-first partial failure. A process restart is required, and the game process
-must be treated as potentially compromised after such a failure. Until the
-pinned Dobby failure path is patched and tested, this adapter must not be
-enabled in a normal player session; use only a controlled test environment.
+`DobbyDestroy(target)` cannot find the unregistered entry. The installer's poisoned state prevents a second attempt but cannot repair
+that historical failure shape. The local pinned-Dobby patch described below
+now prevents preparation errors from reaching Active(), and makes the POSIX
+writer fail before writing if page permissions cannot be changed. Runtime
+fault-injection and device validation are still outstanding, so the adapter
+must remain disabled in normal player sessions.
 
 
 ### Pinned Dobby failure-path blocker (2026-11-18)
@@ -125,9 +125,9 @@ link Dobby, and reports hook installation as unavailable. `JNI_OnLoad` records
 a disabled status instead of attempting detours. The capability bitmask omits
 Cocos hooks, GPU draw bridge, and GPU timer-query capabilities in this mode.
 To opt in, a developer must explicitly set `-DBISMUTH_ENABLE_COCOS_HOOKS=ON`;
-that mode remains experimental and unsafe until the pinned Dobby failure path
-is patched and regression-tested. This change is a safety containment, not a
-repair of Dobby's internals and not a renderer optimization.
+that mode now applies the local pinned-Dobby failure-path patch, but remains
+experimental until it is built, regression-tested, and validated on-device.
+The safe default is a safety containment, not a renderer optimization.
 
 
 ### Pinned Dobby failure-path patch (2026-11-18)
