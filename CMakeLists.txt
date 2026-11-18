@@ -84,4 +84,25 @@ if(BISMUTH_BUILD_TESTS)
   add_executable(bismuth_android_api_c_test tests/android_api_header_c_test.c)
   target_include_directories(bismuth_android_api_c_test PRIVATE include)
   add_test(NAME android_api_header_c_test COMMAND bismuth_android_api_c_test)
+
+  # Exercise the exact patched POSIX Dobby code writer on Linux. This validates
+  # page-boundary failure behavior without installing hooks into a live process.
+  if(UNIX AND NOT APPLE AND NOT ANDROID)
+    include(FetchContent)
+    set(DOBBY_DEBUG OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(DOBBY_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+    set(DOBBY_BUILD_TEST OFF CACHE BOOL "" FORCE)
+    set(Plugin.SymbolResolver OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(dobby_patch_test
+      GIT_REPOSITORY https://github.com/Linifadomra/Dobby.git
+      GIT_TAG a418c6a7c493e6c599713a097ff823c84a40ba96
+      GIT_SHALLOW FALSE
+      PATCH_COMMAND ${CMAKE_COMMAND} -DDOBBY_SOURCE_DIR=<SOURCE_DIR>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_dobby.cmake)
+    FetchContent_MakeAvailable(dobby_patch_test)
+    add_executable(bismuth_dobby_code_patch_tests tests/dobby_code_patch_tests.cpp)
+    target_link_libraries(bismuth_dobby_code_patch_tests PRIVATE dobby)
+    add_test(NAME dobby_code_patch_tests COMMAND bismuth_dobby_code_patch_tests)
+  endif()
 endif()
