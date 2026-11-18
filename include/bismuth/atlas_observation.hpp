@@ -99,6 +99,11 @@ public:
     void invalidateQuadData() noexcept { revisions_.recordQuadWrite(); }
     // Cache invalidation must remain active even when optional telemetry is off.
     void invalidateStructuralMutation() noexcept { revisions_.recordStructuralMutation(); }
+    // resizeCapacity can clear/reset atlas storage even when it returns false.
+    void recordCapacityResizeAttempt() noexcept {
+        revisions_.recordStructuralMutation();
+        counters_.recordStructuralMutation();
+    }
     void invalidateUnknownMutation() noexcept {
         revisions_.recordStructuralMutation();
         counters_.recordStructuralMutation();
