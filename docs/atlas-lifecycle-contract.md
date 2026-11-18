@@ -341,3 +341,43 @@ rollback, recursive entry behavior, and the exact bool ABI on the target
 ARM64 build. In particular, do not use the false return to skip invalidation:
 the failure path can clear the atlas storage itself. No cache may be enabled
 until resize events are observed reliably on-device.
+
+
+## Native hook-install transaction audit (2026-11-18)
+
+A source review of `installCocosPassiveHooks()` found that hook installation
+is currently sequential, but failure handling is not transactional:
+
+- The sprite-transform and quad-write hooks are installed before the batch
+  draw hook.
+- If batch-draw installation fails, the code attempts to destroy only the
+  update-quad hook; the sprite-transform hook remains installed.
+- Later failures (remove-all, insert, remove, move, or increase-total-quads
+  hooks) return immediately without rolling back any earlier detours.
+- In these failure paths, `g_observer` has not yet been published, so the
+  already-installed wrappers normally pass through. However,
+  `g_hooksInstalled` remains false and per-hook flags/trampolines may remain
+  set. A subsequent install attempt can therefore encounter a partially
+  patched process and is not proven safe.
+- The current detach routine only detaches the observer pointer and waits for
+  active callbacks; it intentionally does not unpatch process-lifetime hooks.
+  It is not a rollback mechanism for a failed installation.
+
+This is especially relevant before adding `resizeCapacity`: extending the
+existing sequence would create another partial-install failure point. Do not
+add more hooks until installation is refactored into an explicit transaction
+(or a persistent partial-install state machine) that records every successful
+detour, rolls back in reverse order where safe, and refuses unsafe retries if
+rollback cannot be confirmed. Rollback itself must be tested against the
+specific Dobby version and Android runtime; a failed `DobbyDestroy` must not
+be treated as if the detour were removed.
+
+The observer pointer should remain unpublished until the entire required hook
+set is installed, as it is now. The installation result must also report
+whether the process is clean, fully installed, or partially patched, rather
+than collapsing all failure states into a simple false result.
+
+**Decision:** no new hook is added in this pass. First fix and test hook
+installation atomicity; then add the central resize observer and validate
+normal growth, same-capacity no-op, and allocation-failure invalidation on
+device.
