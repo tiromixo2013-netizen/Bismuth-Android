@@ -216,3 +216,59 @@ not cover vtables whose RTTI/symbols are absent, objects whose vptr changes at
 runtime, or third-party mods adding subclasses. Therefore it narrows the
 known override question but does not remove the need for a conservative
 unknown-class fallback and runtime validation.
+
+
+### Follow-up setter and action call-graph pass (2026-11-18)
+
+A second disassembly pass expanded the mutation inventory beyond the first
+common setters. These are observations from the same uploaded ELF, not installed
+hooks:
+
+| Method | ELF value | Disassembly consequence |
+|---|---:|---|
+| `CCNode::setSkewX(float)` | `0x00aca748` | Writes skew at `+0x54`; sets dirty bytes `+0x11c` and `+0x111` |
+| `CCNode::setSkewY(float)` | `0x00aca764` | Writes skew at `+0x58`; sets dirty bytes `+0x11c` and `+0x111` |
+| `CCNode::setRotationX(float)` | `0x00aca820` | Writes rotation at `+0x38`; sets dirty bytes `+0x11c` and `+0x111` |
+| `CCNode::setRotationY(float)` | `0x00aca83c` | Writes rotation at `+0x3c`; sets dirty bytes `+0x11c` and `+0x111` |
+| `CCNode::setAdditionalTransform(CCAffineTransform const&)` | `0x00acd4a4` | Copies affine data into `+0x74..+0x84`; sets dirty bytes `+0x111` and `+0x11d` |
+| `CCSprite::setDirtyRecursively(bool)` | `0x00b15674` | Sets sprite dirty byte `+0x179`, invokes virtual slot `+0x4a0`, and when child-dirty state is set walks children and invokes slot `+0x4c0` |
+| `CCSprite::setDisplayFrame(CCSpriteFrame*)` | `0x00b15284` | Updates frame offset, may change texture through a virtual call, and updates frame/texture-rect state through another virtual call |
+| `CCActionManager::update(float)` | `0x00ac5aac` | Iterates action lists and dispatches virtual action step/update-related methods; action execution is therefore an indirect source of node mutations |
+
+The setter disassemblies confirm that skew and X/Y rotation are not optional
+edge cases: they set the same broad transform-dirty bytes as position/scale.
+A cache key or invalidation observer that tracks only position, uniform scale,
+and Z rotation would be incomplete. `setAdditionalTransform` is another
+independent transform input and must also be included.
+
+The `CCSprite::setDirtyRecursively` path is especially important for parent
+propagation. It marks the sprite dirty and can propagate dirtiness through
+children using virtual calls. This is a concrete propagation mechanism, but
+the exact implementations behind slots `+0x4a0` and `+0x4c0` still need
+to be resolved before an observer can claim complete subtree coverage.
+
+The action manager does not directly prove which node fields each action
+changes: it dispatches through action virtual methods. The correct next trace
+is to follow the concrete action classes used by Geometry Dash (move, rotate,
+scale, fade, tint, sequence/spawn and custom actions) to their target setters.
+Arbitrary callbacks and third-party actions remain an unbounded mutation
+source unless the cache uses a strict unknown-action fallback.
+
+### Updated implementation decision
+
+The candidate invalidation set now explicitly includes skew, X/Y rotation,
+additional affine transforms, recursive dirty propagation, sprite display-frame
+changes, and action-manager dispatch. No setter hooks have been added. The
+current native observer still records only the base sprite transform entry and
+selected atlas events, so it cannot yet support a safe transform-cache hit.
+
+The Android native library's `JNI_OnLoad` attempts to install its passive
+hooks automatically when that native library is loaded, after verifying the
+target library Build ID. This is distinct from the Geode mod's
+`geode-mod/src/main.cpp`, which contains Geode-level HUD and batch-draw
+telemetry hooks and does not itself load this native hook adapter. Whether a
+particular APK/package actually includes and loads the native library must be
+verified from that package; source presence alone is not proof of deployment.
+
+The cache remains disabled and the original Cocos2d transform path remains
+authoritative.
