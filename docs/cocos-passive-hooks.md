@@ -65,3 +65,19 @@ validated on the target device.
   and device performance are validated.
 
 No FPS improvement or in-game runtime success is claimed by this adapter.
+
+### Partial-install failure policy
+
+The passive installer now enters a poisoned state immediately before its
+first Dobby detour attempt. If any later installation step fails, subsequent
+install calls in the same process are rejected with an explicit error. This
+is intentionally conservative: a failed Dobby call may have changed executable
+code even when it did not provide a usable original trampoline, and the
+adapter has not established that reverse-order unpatching is safe while game
+threads may execute. The observer pointer is still published only after the
+entire required hook set succeeds, so partial installations remain pass-through
+with no observer attached. A process restart is required after a partial
+installation failure. This policy prevents unsafe retries; it does not prove
+that a partially patched process is safe to continue indefinitely, so the
+installer remains experimental and must be exercised only in a controlled
+pre-render environment.
