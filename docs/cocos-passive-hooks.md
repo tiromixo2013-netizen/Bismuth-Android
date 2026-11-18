@@ -75,9 +75,40 @@ is intentionally conservative: a failed Dobby call may have changed executable
 code even when it did not provide a usable original trampoline, and the
 adapter has not established that reverse-order unpatching is safe while game
 threads may execute. The observer pointer is still published only after the
-entire required hook set succeeds, so partial installations remain pass-through
-with no observer attached. A process restart is required after a partial
-installation failure. This policy prevents unsafe retries; it does not prove
-that a partially patched process is safe to continue indefinitely, so the
-installer remains experimental and must be exercised only in a controlled
-pre-render environment.
+entire required hook set succeeds. **This does not guarantee that a partial
+installation is pass-through or safe for the game to continue.** Inspection of
+the exact pinned Dobby source (`a418c6a7c493e6c599713a097ff823c84a40ba96`)
+found that `DobbyHook` calls `routing->Active()` (which patches the target)
+before checking `routing->error`. If that later error check fails, Dobby returns
+an error before publishing the original trampoline and before registering the
+entry in its interceptor table. In that failure shape, the target may already
+be patched, the wrapper may have no original-function pointer, and
+`DobbyDestroy(target)` cannot find the unregistered entry. The current
+installer's poisoned state prevents a second attempt but cannot repair this
+first partial failure. A process restart is required, and the game process
+must be treated as potentially compromised after such a failure. Until the
+pinned Dobby failure path is patched and tested, this adapter must not be
+enabled in a normal player session; use only a controlled test environment.
+
+
+### Pinned Dobby failure-path blocker (2026-11-18)
+
+The pinned dependency's source was inspected, not inferred from its header:
+
+- `source/InterceptRouting/InlineHookRouting.h`: `BuildRouting()` calls
+  `GenerateTrampoline()`, `GenerateRelocatedCode()`, and `BackupOriginCode()` without stopping when relocation has set `error`.
+- `source/InterceptRouting/InterceptRouting.h`: `Active()` calls
+  `DobbyCodePatch()` and only ORs its result into `error`.
+- `source/dobby.cpp`: `DobbyHook()` calls `routing->BuildRouting()`, then
+  `routing->Active()`, and only afterwards checks `routing->error`. On error it
+  returns before writing `out_origin_func` and before `gInterceptor.add(entry)`.
+- `DobbyDestroy()` searches the interceptor table. An entry rejected before
+  `gInterceptor.add(entry)` is not discoverable by that API.
+
+Therefore the installer's poison flag is only a retry guard, not a recovery
+mechanism. A proper fix belongs in the pinned Dobby dependency: fail before
+`Active()` whenever trampoline generation or relocation fails, and ensure any
+post-patch failure restores the original bytes before returning. This must be
+implemented and tested in the dependency before the native adapter is
+considered safe for ordinary gameplay. No new Cocos hooks or transform cache
+are authorized by this finding.
