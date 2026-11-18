@@ -476,33 +476,23 @@ void updateHud(float dt, double updateCpuMs) {
             Mod::get()->getSettingValue<bool>("hud-advanced")) refreshPercentiles();
     }
 
-    // Keep display updates at 4 Hz, but do filesystem/sensor sampling only at 1 Hz.
-    static float metricSampleAccumulator = 1.f;
-    static double cachedCpu = -1.0, cachedGpu = -1.0;
-    static double cachedCpuTemp = -1.0, cachedGpuTemp = -1.0;
-    static double cachedProcessRss = -1.0;
+    // All device telemetry is sampled by the Companion process. The game
+    // thread only reads the latest in-memory snapshot; never scan /proc or
+    // /sys from the frame/update path.
     g_hudRefreshAccumulator += std::max(0.f, dt);
-    metricSampleAccumulator += std::max(0.f, dt);
     if (g_hudRefreshAccumulator < 0.25f) return;
     g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 0.25f);
 
-    if (metricSampleAccumulator >= 1.f) {
-        metricSampleAccumulator = std::fmod(metricSampleAccumulator, 1.f);
-        cachedCpu = Mod::get()->getSettingValue<bool>("monitor-cpu") ? sampleProcessCpuPercent() : -1.0;
-        cachedGpu = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
-        const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
-        cachedCpuTemp = thermalEnabled ? readThermalZoneC("cpu") : -1.0;
-        cachedGpuTemp = thermalEnabled ? readThermalZoneC("gpu") : -1.0;
-        cachedProcessRss = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
-    }
-
-    if (cachedGpu < 0.0) cachedGpu = g_shizukuSnapshot.gpu;
-    if (cachedCpuTemp < 0.0) cachedCpuTemp = g_shizukuSnapshot.cpuTemp;
-    if (cachedGpuTemp < 0.0) cachedGpuTemp = g_shizukuSnapshot.gpuTemp;
-
-    const double cpuShown = cachedCpu >= 0.0 ? cachedCpu : g_shizukuSnapshot.deviceCpu;
-    const double systemRamUsed = g_shizukuSnapshot.ramUsedMb;
-    const double systemRamTotal = g_shizukuSnapshot.ramTotalMb;
+    const bool cpuEnabled = Mod::get()->getSettingValue<bool>("monitor-cpu");
+    const bool gpuEnabled = Mod::get()->getSettingValue<bool>("monitor-gpu");
+    const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
+    const bool memoryEnabled = Mod::get()->getSettingValue<bool>("hud-memory");
+    const double cpuShown = cpuEnabled ? g_shizukuSnapshot.deviceCpu : -1.0;
+    const double gpuShown = gpuEnabled ? g_shizukuSnapshot.gpu : -1.0;
+    const double cpuTempShown = thermalEnabled ? g_shizukuSnapshot.cpuTemp : -1.0;
+    const double gpuTempShown = thermalEnabled ? g_shizukuSnapshot.gpuTemp : -1.0;
+    const double systemRamUsed = memoryEnabled ? g_shizukuSnapshot.ramUsedMb : -1.0;
+    const double systemRamTotal = memoryEnabled ? g_shizukuSnapshot.ramTotalMb : -1.0;
 
     double averageFrameMs = 0.0;
     if (g_frameIntervalCount) {
@@ -523,23 +513,21 @@ void updateHud(float dt, double updateCpuMs) {
     if (cpuShown >= 0.0) compact << std::setprecision(0) << cpuShown << "%";
     else compact << "N/A";
     compact << " | GPU ";
-    if (cachedGpu >= 0.0) compact << std::setprecision(0) << cachedGpu << "%";
+    if (gpuShown >= 0.0) compact << std::setprecision(0) << gpuShown << "%";
     else compact << "N/A";
 
     compact << "\nRAM ";
     if (systemRamUsed >= 0.0 && systemRamTotal > 0.0)
         compact << std::setprecision(1) << systemRamUsed / 1024.0 << "/" << systemRamTotal / 1024.0 << "G";
-    else if (cachedProcessRss >= 0.0)
-        compact << std::setprecision(1) << "APP " << cachedProcessRss / 1024.0 << "G";
     else compact << "N/A";
 
     compact << " | T";
-    if (cachedCpuTemp >= 0.0 || cachedGpuTemp >= 0.0) {
+    if (cpuTempShown >= 0.0 || gpuTempShown >= 0.0) {
         compact << "C";
-        if (cachedCpuTemp >= 0.0) compact << std::setprecision(0) << cachedCpuTemp;
+        if (cpuTempShown >= 0.0) compact << std::setprecision(0) << cpuTempShown;
         else compact << "--";
         compact << "/G";
-        if (cachedGpuTemp >= 0.0) compact << std::setprecision(0) << cachedGpuTemp;
+        if (gpuTempShown >= 0.0) compact << std::setprecision(0) << gpuTempShown;
         else compact << "--";
     } else compact << "N/A";
 
