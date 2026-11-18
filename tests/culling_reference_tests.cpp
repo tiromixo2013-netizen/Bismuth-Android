@@ -255,6 +255,12 @@ int main() {
     const AtlasRevision beforeTelemetryOffStructure = passive.revision();
     passive.invalidateStructuralMutation();
     assert(!passive.slotMappingCurrent(beforeTelemetryOffStructure));
+
+    const AtlasRevision beforeResizeAttempt = passive.revision();
+    passive.recordCapacityResizeAttempt();
+    assert(!passive.slotMappingCurrent(beforeResizeAttempt));
+    const auto afterResizeStats = passive.snapshot();
+    assert(afterResizeStats.structuralMutations == 2u);
     const AtlasRevision beforeDirtyUpload = passive.revision();
     passive.recordDirtyUpload(false, 10u);
     assert(passive.quadDataCurrent(beforeDirtyUpload));
