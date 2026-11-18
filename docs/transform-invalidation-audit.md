@@ -102,3 +102,94 @@ Eligibility requires all of the following:
 Until each condition is demonstrated, call the original Cocos2d method.
 The initial implementation target remains observation-only; no transform
 bypass is enabled by this audit.
+
+
+## Binary inspection results (uploaded target ELF)
+
+Inspected the uploaded `libcocos2dcpp.so` directly with ELF metadata,
+dynamic-symbol enumeration, and AArch64 disassembly. The file is a stripped
+ELF64 AArch64 shared object (19,077,352 bytes) with GNU Build ID
+`ca621323d54c1d94f5f13a2778ce9c8baa31b9a8`, matching the target ID recorded
+above. The presence of symbols does not establish the exact APK version.
+
+### Confirmed rendering and transform flow
+
+- `CCSpriteBatchNode::draw()`: `0x00b17034`, size 232 bytes. It walks the
+  child array held through the node's child-container pointer at `this+0xd0`
+  (container count at `+0x38`, element pointer at `+0x10`), calls each
+  non-null child's vtable slot `+0x308`, then submits the texture atlas via
+  `CCTextureAtlas::drawQuads()` at `0x00b33c40`.
+- `CCNode::updateTransform()`: `0x00acabf8`, size 100 bytes. It also walks
+  the child container at `this+0xd0` and dispatches the same vtable slot
+  `+0x308` for each non-null child. This confirms recursive child processing
+  on this path; a shortcut must preserve it or prove the subtree is safe.
+- `CCSprite::updateTransform()`: `0x00b161d0`, size 1,072 bytes. It first
+  calls a virtual predicate at vtable byte offset `+0x498`; the main path
+  checks dirty state at `this+0x11e`, consults parent pointer `this+0xd8`
+  and parent dirty byte `parent+0x17b`, obtains parent transform through
+  vtable slot `+0x310`, composes affine data, and writes sprite transform/
+  quad-related fields. It calls `CCTextureAtlas::updateQuad()` at
+  `0x00b332ac` only when the atlas pointer at `this+0x160` is non-null and
+  the checked byte at `this+0x22f` is clear. The function also clears/updates
+  dirty-state bytes including `this+0x179` and `this+0x17b`.
+- The base `CCSprite` vtable slot `+0x308` resolves to this exported
+  `CCSprite::updateTransform()`; a subclass that replaces the slot without
+  calling the base still bypasses a hook placed only on this symbol.
+- `CCTextureAtlas::updateQuad()`: `0x00b332ac`, size 100 bytes. It copies
+  the 96-byte quad record into atlas storage at a 96-byte stride and marks the
+  atlas dirty.
+- `CCTextureAtlas::resizeCapacity()`: `0x00b336d8`, size 492 bytes. It
+  reallocates quad/index storage, may rebuild indices and remap buffers, and
+  marks the atlas dirty on the successful resize path. This is a confirmed
+  structural invalidation point and must invalidate any slot/storage cache.
+- `CCSpriteBatchNode::visit()`: `0x00b1711c`, size 172 bytes. It performs
+  visibility/transform handling around the batch draw path; it is not a
+  replacement for per-child transform processing.
+
+### Confirmed exported mutation entry points
+
+The following symbols are present in this exact ELF. These are audit targets,
+not a claim that Bismuth currently hooks them:
+
+| API | ELF value |
+|---|---:|
+| `CCNode::setPosition(CCPoint const&)` | `0x00aca8c8` |
+| `CCNode::setScale(float)` | `0x00aca858` |
+| `CCNode::setRotation(float)` | `0x00aca7e8` |
+| `CCNode::setVisible(bool)` | `0x00aca91c` |
+| `CCNode::setAnchorPoint(CCPoint const&)` | `0x00acb158` |
+| `CCNode::setContentSize(CCSize const&)` | `0x00acb20c` |
+| `CCSprite::setPosition(CCPoint const&)` | `0x00b16880` |
+| `CCSprite::setRotation(float)` | `0x00b1690c` |
+| `CCSprite::setScale(float)` | `0x00b16c40` |
+| `CCSprite::setAnchorPoint(CCPoint const&)` | `0x00b16d38` |
+| `CCSprite::setVisible(bool)` | `0x00b16db0` |
+| `CCSprite::setTextureRect(CCRect const&, bool, CCSize const&)` | `0x00b14db4` |
+| `CCSprite::setTexture(CCTexture2D*)` | `0x00b154a4` |
+| `CCSprite::setFlipX(bool)` / `setFlipY(bool)` | `0x00b15e78` / `0x00b15ebc` |
+| `CCTextureAtlas::insertQuad` | `0x00b33310` |
+| `CCTextureAtlas::removeQuadAtIndex` | `0x00b335f0` |
+| `CCTextureAtlas::removeQuadsAtIndex` | `0x00b33664` |
+| `CCTextureAtlas::removeAllQuads` | `0x00b336d0` |
+| `CCTextureAtlas::resizeCapacity` | `0x00b336d8` |
+| `CCTextureAtlas::moveQuadsFromIndex` | `0x00b338e4` / `0x00b339f4` |
+
+Disassembly confirms, for example, that `CCNode::setPosition` marks transform
+state bytes at `+0x11c` and `+0x112` before storing the two position floats.
+The `CCSprite::setPosition` override compares the old and new coordinates,
+delegates to the base setter when changed, and may notify its batch node through
+virtual calls. `CCSprite::setVisible` delegates to the base setter and can
+also notify the batch node. These paths reinforce that a single passive
+`updateTransform` counter cannot provide complete invalidation coverage.
+
+### Consequence for implementation
+
+We now have exact, matching-binary entry points to audit instead of generic
+API guesses. The next static pass should trace all relevant setter and action
+writes into the dirty flags and determine the virtual implementations behind
+slots `+0x308`, `+0x310`, and `+0x498`, including custom subclasses. Only
+after that can we design an opt-in cache with original-path fallback.
+
+No rendering bypass or transform cache has been implemented or enabled by
+this binary inspection. No visual-equivalence, runtime, or FPS test has been
+performed yet.
