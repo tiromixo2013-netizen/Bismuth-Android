@@ -44,9 +44,11 @@ using synthetic memory. The reader does not traverse child objects.
 
 The native API's installation routine is intended only for a controlled host
 that can guarantee the exact target library is loaded and the relevant render
-methods are not executing while Dobby patches them. The current Geode package
-does not meet that guarantee, so it deliberately does not call
-`bismuth_install_cocos_hooks`.
+methods are not executing while Dobby patches them. The build option
+`BISMUTH_ENABLE_COCOS_HOOKS` is now **OFF by default**. With the default
+configuration, the adapter translation unit supplies no-op API stubs, Dobby
+is not fetched or linked, and `JNI_OnLoad` does not attempt any Cocos detours.
+The Geode package also does not call `bismuth_install_cocos_hooks`.
 
 The native GPU draw bridge is also experimental and remains disabled. It must
 not replace the game's draw call until the complete render state, VAO/EBO
@@ -112,3 +114,17 @@ post-patch failure restores the original bytes before returning. This must be
 implemented and tested in the dependency before the native adapter is
 considered safe for ordinary gameplay. No new Cocos hooks or transform cache
 are authorized by this finding.
+
+
+### Safe default after Dobby audit (2026-11-18)
+
+The default CMake configuration now sets `BISMUTH_ENABLE_COCOS_HOOKS=OFF`.
+The native library still builds its non-hook GLES/core pieces, but the Cocos
+adapter is compiled in stub mode: it does not include Dobby headers, does not
+link Dobby, and reports hook installation as unavailable. `JNI_OnLoad` records
+a disabled status instead of attempting detours. The capability bitmask omits
+Cocos hooks, GPU draw bridge, and GPU timer-query capabilities in this mode.
+To opt in, a developer must explicitly set `-DBISMUTH_ENABLE_COCOS_HOOKS=ON`;
+that mode remains experimental and unsafe until the pinned Dobby failure path
+is patched and regression-tested. This change is a safety containment, not a
+repair of Dobby's internals and not a renderer optimization.
