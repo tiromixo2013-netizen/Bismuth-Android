@@ -75,7 +75,6 @@ bool g_shizukuConnecting = false;
 bool g_shizukuConnected = false;
 std::string g_shizukuRx;
 std::string g_shizukuLastError;
-auto g_shizukuNextPoll = std::chrono::steady_clock::time_point{};
 auto g_shizukuLastSample = std::chrono::steady_clock::time_point{};
 auto g_shizukuConnectStarted = std::chrono::steady_clock::time_point{};
 
@@ -128,10 +127,8 @@ void pollShizukuBridge() {
         return;
     }
     const auto now = std::chrono::steady_clock::now();
-    if (now < g_shizukuNextPoll) return;
-    // Telemetry is deliberately polled at 1 Hz; the Companion keeps sampling
-    // independently, so the game thread does not need to drain the socket at 4 Hz.
-    g_shizukuNextPoll = now + std::chrono::seconds(1);
+    // The scene controller schedules this function at 1 Hz. Keep socket work
+    // out of the per-frame update path; the Companion samples independently.
     if (g_shizukuConnected && now - g_shizukuLastSample > std::chrono::seconds(2)) {
         closeShizukuSocket();
         g_shizukuLastError = "telemetry timeout after 2s";
@@ -586,15 +583,17 @@ public:
 
     void update(float dt) override {
         const auto start = std::chrono::steady_clock::now();
-        g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
-        g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
-        g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
         g_hudSyncAccumulator += std::max(0.f, dt);
         if (g_hudSyncAccumulator >= 1.0f) {
             g_hudSyncAccumulator = std::fmod(g_hudSyncAccumulator, 1.0f);
+            // Slow-path work is deliberately grouped at 1 Hz: settings sync,
+            // companion socket polling, and telemetry counter snapshots.
             syncHud(this);
+            pollShizukuBridge();
+            g_batchDrawCallsLast = g_batchDrawCallsCurrent.exchange(0, std::memory_order_acq_rel);
+            g_batchChildrenLast = g_batchChildrenCurrent.exchange(0, std::memory_order_acq_rel);
+            g_batchCpuNsLast = g_batchCpuNsCurrent.exchange(0, std::memory_order_acq_rel);
         }
-        pollShizukuBridge();
         if (g_bismuthHudPanel) updateHud(dt, m_lastWorkMs);
         const auto end = std::chrono::steady_clock::now();
         m_lastWorkMs = std::chrono::duration<double, std::milli>(end - start).count();
