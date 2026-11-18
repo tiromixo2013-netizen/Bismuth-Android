@@ -343,41 +343,39 @@ the failure path can clear the atlas storage itself. No cache may be enabled
 until resize events are observed reliably on-device.
 
 
-## Native hook-install transaction audit (2026-11-18)
+## Native hook-install state machine (2026-11-19)
 
-A source review of `installCocosPassiveHooks()` found that hook installation
-is currently sequential, but failure handling is not transactional:
+The installer now uses an explicit process-lifetime state machine shared from
+`include/bismuth/hook_install_state.hpp`:
 
-- The sprite-transform and quad-write hooks are installed before the batch
-  draw hook.
-- If batch-draw installation fails, the code attempts to destroy only the
-  update-quad hook; the sprite-transform hook remains installed.
-- Later failures (remove-all, insert, remove, move, or increase-total-quads
-  hooks) return immediately without rolling back any earlier detours.
-- In these failure paths, `g_observer` has not yet been published, so the
-  already-installed wrappers normally pass through. However,
-  `g_hooksInstalled` remains false and per-hook flags/trampolines may remain
-  set. A subsequent install attempt can therefore encounter a partially
-  patched process and is not proven safe.
-- The current detach routine only detaches the observer pointer and waits for
-  active callbacks; it intentionally does not unpatch process-lifetime hooks.
-  It is not a rollback mechanism for a failed installation.
+- `Clean`: module Build ID and required symbol ownership can be checked
+  without changing executable code.
+- `Installing`: entered immediately before the first Dobby detour attempt.
+- `Partial`: any early return after entering Installing transitions here
+  through an RAII guard. The observer pointer remains unpublished, so already
+  installed wrappers remain pass-through. A second install attempt is refused
+  until process restart.
+- `Installed`: reached only after every required detour succeeds and the
+  observer pointer is published. Detach removes the observer but does not
+  reset this state because the process-lifetime trampolines remain installed.
 
-This is especially relevant before adding `resizeCapacity`: extending the
-existing sequence would create another partial-install failure point. Do not
-add more hooks until installation is refactored into an explicit transaction
-(or a persistent partial-install state machine) that records every successful
-detour, rolls back in reverse order where safe, and refuses unsafe retries if
-rollback cannot be confirmed. Rollback itself must be tested against the
-specific Dobby version and Android runtime; a failed `DobbyDestroy` must not
-be treated as if the detour were removed.
+The previous one-off rollback of the update-quad hook when batch-draw
+installation failed has been removed. It was unsafe to assume that
+`DobbyDestroy` could be called while render threads might execute the target.
+No reverse-order unpatching is attempted. The guard is tested on the host for
+both early-return-to-Partial and successful-commit-to-Installed transitions;
+the Android ARM64 build compiles the actual installer path.
 
-The observer pointer should remain unpublished until the entire required hook
-set is installed, as it is now. The installation result must also report
-whether the process is clean, fully installed, or partially patched, rather
-than collapsing all failure states into a simple false result.
+This is a fail-closed partial-install state machine, not an atomic transaction:
+a failure can leave earlier pass-through detours installed for the remainder
+of the process. It prevents retries and keeps the observer unpublished, but
+does not prove concurrent patch safety or recover a process if a detour itself
+is left in an unknown state. Physical-device fault injection and thread
+quiescence remain outstanding.
 
-**Decision:** no new hook is added in this pass. First fix and test hook
-installation atomicity; then add the central resize observer and validate
-normal growth, same-capacity no-op, and allocation-failure invalidation on
-device.
+**Next gate:** before adding the central `resizeCapacity` observer, validate
+the installer state machine and Dobby behavior on the target device, then
+observe normal growth, same-capacity no-op, and allocation-failure invalidation.
+No transform cache is eligible until hierarchy, subclass dispatch, atlas
+capacity, and all transform-affecting mutation paths have complete invalidation
+coverage.
