@@ -177,3 +177,93 @@ capacity changes must invalidate all candidate-to-slot and quad-derived caches.
    invalidates the entire relevant cache.
 
 No transform bypass or renderer change is authorized by this coverage audit.
+
+
+## Hierarchy and SpriteBatch lifecycle trace (2026-11-18)
+
+A second disassembly pass followed the hierarchy entry points and the
+SpriteBatchNode-specific add/remove/reorder paths in the same target ELF.
+
+### CCNode parent/child mutations
+
+- `CCNode::setParent(CCNode*)` at `0x00aca94c` is a minimal pointer store:
+  it writes the parent pointer at `this+0xd8` and returns. It does not itself
+  mark the node's transform dirty. A cache must not treat a parent-pointer
+  write as a complete invalidation event unless the surrounding hierarchy
+  operation is also observed.
+- `CCNode::addChild(child,z,tag)` at `0x00acca7c` ensures the child array
+  exists, calls `insertChild`, writes the child's z-order at `child+0x10`,
+  and dispatches the child's parent setter through vtable byte offset
+  `+0x1e8`. It then handles order-of-arrival and lifecycle/transition
+  callbacks. The short public overloads dispatch through the parent's
+  vtable at byte offset `+0x1c8`, so subclass overrides are possible.
+- `CCNode::insertChild(child,z)` at `0x00acca00` marks the parent's
+  reorder-dirty byte at `+0x120`, inserts/appends the child in the child
+  array, and dispatches the child's local Z-order setter through vtable
+  offset `+0x60`.
+- `CCNode::detachChild(child,cleanup)` at `0x00acc920` invokes lifecycle
+  callbacks when the parent is running, dispatches the child's parent setter
+  with null, and removes the child from the parent's child array. When child
+  indexing is enabled, removal uses the child index; otherwise it removes
+  by object. Public remove-child entry points dispatch through virtual
+  methods, so an observer limited to the base helper can miss overrides.
+- `CCNode::reorderChild(child,z)` at `0x00acab1c` sets the parent's
+  reorder-dirty byte, updates the global order-of-arrival counter, and
+  updates the child's Z order. It is a draw-order mutation even when the
+  transform matrix is unchanged.
+
+### CCSpriteBatchNode-specific behavior
+
+- `CCSpriteBatchNode::addChild(child,z,tag)` at `0x00b18610` first invokes
+  child-side batch/texture setup, then performs the base `CCNode::addChild`
+  operation, and finally calls `appendChild` to integrate the sprite into
+  the batch's atlas.
+- `CCSpriteBatchNode::appendChild(sprite)` at `0x00b17e2c` marks batch
+  reorder state, associates the sprite with the batch, marks it dirty, handles
+  nested sprite children recursively, adds the sprite to the batch's sprite
+  array, assigns an atlas index at `sprite+0x168`, copies the 96-byte quad,
+  and calls `CCTextureAtlas::insertQuad`. This is both hierarchy and atlas
+  structure mutation.
+- `CCSpriteBatchNode::removeChild(child,cleanup)` at `0x00b187c4` calls
+  `removeSpriteFromAtlas` before tail-branching to the base node removal.
+  The atlas removal path may swap the last sprite into the removed sprite's
+  index and then removes the corresponding atlas quad. Nested sprite children
+  are processed recursively.
+- `CCSpriteBatchNode::reorderChild(child,z)` at `0x00b18754` conditionally
+  checks whether the child belongs to the batch and, when the effective Z
+  order changes, delegates to `CCNode::reorderChild`. Thus order changes
+  require preserving the original engine sorting and draw-order path; they
+  cannot be treated as a transform-only change.
+
+### Observer coverage consequence
+
+The current native adapter observes selected atlas entry points (insert,
+remove, move, remove-all, and increase-total-quads), but it does not hook the
+hierarchy methods above or the SpriteBatchNode add/remove/reorder methods.
+The atlas-level hooks can see many downstream quad mutations, but they do
+not provide a complete parent/child graph revision, and they cannot by
+themselves establish which ancestor transform revision applies to a sprite.
+
+The adapter also still does not observe `CCTextureAtlas::resizeCapacity`
+(`0x00b336d8`). The actual implementation changes capacity, reallocates
+quad and index storage, may rebuild indices and remap buffers, and can take
+failure paths that free/reset storage. `increaseTotalQuadsWith` only updates
+the used-quad count/high-water field; it is not a substitute for observing
+capacity allocation. Therefore any slot/storage cache must be invalidated
+conservatively on capacity uncertainty, and the current observer cannot
+claim complete atlas-storage coverage.
+
+The existing atlas wrappers generally call the original function and then
+record a structural mutation without inspecting a success result. This is
+conservative for invalidation (it can produce harmless extra revision
+increments), but it is not evidence that every operation succeeded. The
+resize path is more complicated because its return value and allocation
+failure behavior matter; do not add a hook until the trampoline/rollback and
+post-call success semantics are reviewed.
+
+### Current decision
+
+No hierarchy or resize hooks are added in this pass. A transform cache remains
+ineligible: parent/child graph changes, subclass virtual dispatch, batch
+membership, Z-order changes, and capacity reallocations are not yet covered
+by a complete runtime observer. The original Cocos2d path remains authoritative.
