@@ -323,7 +323,7 @@ int main() {
     assert(spatial.insert(400u, Bounds{-1000, -1000, 1000, 1000}));
     assert(spatial.insert(500u, Bounds{nan, 0, 10, 10}));
     spatial.query(Rect{2000, 2000, 2010, 2010}, spatialHits);
-    assert((spatialHits == std::vector<std::uint32_t>{400u, 500u}));
+    assert((spatialHits == std::vector<std::uint32_t>{500u}));
     // A huge query safely falls back to scanning all entries.
     spatial.query(Rect{-1.0e20f, -1.0e20f, 1.0e20f, 1.0e20f}, spatialHits);
     assert(spatialHits.size() == 4u);
