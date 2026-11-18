@@ -373,9 +373,21 @@ public final class UserService extends IBismuthUserService.Stub {
     }
 
     private static boolean isWantedThermalType(String type, String wanted) {
-        String n = type.toLowerCase(Locale.ROOT);
-        if ("cpu".equals(wanted)) return n.contains("cpu") || n.contains("mtktscpu");
-        if ("gpu".equals(wanted)) return n.contains("gpu") || n.contains("mali") || n.contains("gpuss");
+        String n = type.toLowerCase(Locale.ROOT).replace('_', '-');
+        if ("cpu".equals(wanted)) {
+            // Samsung/MediaTek kernels do not always label CPU sensors literally.
+            // "soc"/"ap" are package-level fallbacks; keep the raw zone list in
+            // diagnostics so the device-specific mapping can still be verified.
+            return n.contains("cpu") || n.contains("mtktscpu") ||
+                   n.contains("soc") || n.equals("ap") ||
+                   n.contains("cpu-therm") || n.contains("little") ||
+                   n.contains("big") || n.contains("cluster");
+        }
+        if ("gpu".equals(wanted)) {
+            return n.contains("gpu") || n.contains("mali") ||
+                   n.contains("gpuss") || n.contains("mtktsgpu") ||
+                   n.contains("gpu-therm");
+        }
         return n.contains(wanted);
     }
 
@@ -426,7 +438,9 @@ public final class UserService extends IBismuthUserService.Stub {
             try {
                 String type = readText(new File(z, "type").getPath());
                 String raw = readText(new File(z, "temp").getPath());
-                out.append("\n").append(z.getName()).append(" [").append(type).append("]=").append(raw);
+                double celsius = normalizeTemperature(Long.parseLong(raw.trim()));
+                out.append("\n").append(z.getName()).append(" [").append(type).append("]=")
+                   .append(raw).append(" (").append(celsius > 0 ? String.format(Locale.US, "%.1fC", celsius) : "unparsed").append(")");
             } catch (Exception e) { out.append("\n").append(z.getName()).append(" [unreadable]"); }
         }
         if (count == 0) out.append("\nNo readable thermal_zone entries");
