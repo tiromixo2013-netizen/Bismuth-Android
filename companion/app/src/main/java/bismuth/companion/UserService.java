@@ -126,14 +126,32 @@ public final class UserService extends IBismuthUserService.Stub {
     private static String previousGpuSource = "";
     private static long previousGpuBusy, previousGpuTotal;
 
-    private static double readGpuPercent(String path) {
+    private static double parseGpuPercent(String raw) {
+        if (raw == null) return -1;
+        String value = raw.trim();
+        if (value.isEmpty()) return -1;
+        // GED/Mali vendor nodes sometimes return labels such as "GPU loading: 37%".
+        int percent = value.indexOf('%');
+        if (percent >= 0) {
+            int start = percent - 1;
+            while (start >= 0 && (Character.isDigit(value.charAt(start)) ||
+                    value.charAt(start) == '.' || value.charAt(start) == ' ')) start--;
+            String token = value.substring(start + 1, percent).trim();
+            try {
+                double parsed = Double.parseDouble(token);
+                return (Double.isFinite(parsed) && parsed >= 0 && parsed <= 100) ? parsed : -1;
+            } catch (Exception ignored) { return -1; }
+        }
+        // Plain numeric utilization nodes are also common.
         try {
-            String raw = readText(path).trim();
-            if (raw.isEmpty()) return -1;
-            String token = raw.endsWith("%") ? raw.substring(0, raw.length() - 1).trim() : raw;
-            double value = Double.parseDouble(token);
-            return (Double.isFinite(value) && value >= 0 && value <= 100) ? value : -1;
+            double parsed = Double.parseDouble(value);
+            return (Double.isFinite(parsed) && parsed >= 0 && parsed <= 100) ? parsed : -1;
         } catch (Exception ignored) { return -1; }
+    }
+
+    private static double readGpuPercent(String path) {
+        try { return parseGpuPercent(readText(path)); }
+        catch (Exception ignored) { return -1; }
     }
 
     // Qualcomm KGSL gpubusy reports busy time followed by elapsed time.
@@ -196,15 +214,34 @@ public final class UserService extends IBismuthUserService.Stub {
         double kgsl = kgslLoad();
         if (kgsl >= 0) return kgsl;
 
+        // MediaTek GED (GPU Engine Driver) nodes used by several Mali/MTK kernels.
+        // These may contain either a plain number or a labelled percentage.
+        String[] ged = {
+            "/sys/kernel/ged/hal/gpu_utilization",
+            "/sys/kernel/ged/hal/gpu_loading",
+            "/sys/kernel/ged/hal/gpu_busy",
+            "/sys/kernel/ged/hal/gpu_busy_percentage",
+            "/sys/kernel/debug/ged/hal/gpu_utilization",
+            "/sys/kernel/debug/ged/hal/gpu_loading"
+        };
+        for (String path : ged) {
+            double value = readGpuPercent(path);
+            if (value >= 0) return value;
+        }
+
         // Common ARM Mali / MediaTek driver nodes. Availability and read permission
         // are kernel-specific; an unreadable or non-percentage value remains N/A.
         String[] direct = {
             "/sys/class/misc/mali0/device/utilisation",
             "/sys/class/misc/mali0/device/utilization",
+            "/sys/class/misc/mali0/device/load",
+            "/sys/class/misc/mali0/device/gpu_busy",
+            "/sys/class/misc/mali0/device/gpu_utilization",
+            "/sys/class/misc/mali0/device/gpu_loading",
             "/sys/devices/platform/mali/utilisation",
             "/sys/devices/platform/mali/utilization",
-            "/sys/class/misc/mali0/device/load",
-            "/sys/class/misc/mali0/device/gpu_busy"
+            "/sys/devices/platform/mali/gpu_utilization",
+            "/sys/devices/platform/mali/gpu_loading"
         };
         for (String path : direct) {
             double value = readGpuPercent(path);
@@ -255,10 +292,14 @@ public final class UserService extends IBismuthUserService.Stub {
         if (platform != null) for (File d : platform) {
             String n = d.getName().toLowerCase(Locale.ROOT);
             if (!n.contains("mali") && !n.contains("gpu")) continue;
-            for (String attr : new String[]{"utilisation", "utilization", "load"}) {
+            for (String attr : new String[]{"utilisation", "utilization", "load",
+                    "gpu_utilization", "gpu_loading", "gpu_busy", "gpu_busy_percentage"}) {
                 double value = readGpuPercent(new File(d, attr).getPath());
                 if (value >= 0) return value;
             }
+            // Some MTK trees expose counters under the platform device itself.
+            double rootCounters = gpuCounterLoad(d);
+            if (rootCounters >= 0) return rootCounters;
             File devfreq = new File(d, "devfreq");
             File[] nodes = devfreq.listFiles();
             if (nodes != null) for (File node : nodes) {
@@ -267,6 +308,8 @@ public final class UserService extends IBismuthUserService.Stub {
                     if (value >= 0) return value;
                 }
                 double value = gpuCounterLoad(node);
+                if (value >= 0) return value;
+                value = gpuCounterLoad(new File(node, "device"));
                 if (value >= 0) return value;
             }
         }
