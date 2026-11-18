@@ -109,6 +109,10 @@ std::mutex g_installMutex;
 std::mutex g_gpuHookMutex;
 bool g_gpuDrawHookInstalled = false;
 bool g_hooksInstalled = false;
+// Once any passive detour installation is attempted, a later failure poisons
+// this process' install state. Dobby rollback is deliberately avoided because
+// unpatching while Cocos threads may execute is not proven safe.
+bool g_hookInstallPoisoned = false;
 
 class ScopedBismuthTrace final {
 public:
@@ -482,6 +486,10 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         g_observer.store(observer, std::memory_order_release);
         return true;
     }
+    if (g_hookInstallPoisoned) {
+        if (error) *error = "A previous Cocos hook installation attempt failed after detouring began; refusing an unsafe retry until process restart";
+        return false;
+    }
 
     ModuleSearch module;
     dl_iterate_phdr(findTargetModule, &module);
@@ -524,6 +532,11 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
         if (error) *error = "Required exported Cocos2d symbols could not be resolved from the verified module";
         return false;
     }
+
+    // From this point onward a Dobby call may have modified executable code
+    // even if it reports failure or returns an unusable trampoline. Poison the
+    // state before the first attempt so every subsequent early return is safe.
+    g_hookInstallPoisoned = true;
 
     if (!g_spriteUpdateTransformHooked) {
         if (DobbyHook(spriteUpdateTransform, reinterpret_cast<void*>(hookedSpriteUpdateTransform),
@@ -652,6 +665,7 @@ bool installCocosPassiveHooks(AtlasPassiveObserver* observer, std::string* error
 
     g_observer.store(observer, std::memory_order_release);
     g_hooksInstalled = true;
+    g_hookInstallPoisoned = false;
     return true;
 }
 
