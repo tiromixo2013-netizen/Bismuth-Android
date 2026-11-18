@@ -128,3 +128,52 @@ They do not prove that all mutation sites have been found, that callbacks
 execute after successful mutations, or that a runtime cache will improve
 performance. The live renderer remains untouched. Runtime hook installation,
 object-layout validation, and device testing are still required.
+
+
+## Coverage audit: important observer blind spots (2026-11-18)
+
+A source audit of `src/cocos_hooks.cpp` found that the current passive
+`CCSprite::updateTransform()` detour attaches only to the exported base-class
+symbol. The batch draw loop dispatches through each child's vtable slot
+`+0x308`. A subclass that overrides that slot without calling the base
+implementation will bypass this detour entirely. Consequently:
+
+- The current transform counter is a count of calls that enter the base
+  `CCSprite::updateTransform()` symbol, **not** a complete count of all
+  per-child virtual transform calls.
+- The existing `unknownTransformOverrides` counter cannot be treated as a
+  complete census of overrides from this hook alone. The current callback
+  records the base implementation as known; it has no independent callback
+  for an override that replaces the slot.
+- A future override census needs safe vtable-slot observation or a proven
+  runtime class/method inventory. It must not patch arbitrary vtable targets
+  without validating executable ownership, signatures, and coexistence.
+
+The same audit found that this observer does not hook the transform-affecting
+`CCNode` / `CCSprite` setters (position, rotation, scale, anchor point,
+content size, vertex/color/opacity, texture/rect, flip, visibility, actions,
+and parent-child transform propagation). Therefore the current atlas revision
+tracker is an atlas-content/slot tracker, **not** a complete sprite-transform
+invalidation tracker.
+
+Capacity changes also need a distinct audit: the former `resizeCapacity`
+hook is intentionally absent after a prior recursive-hook crash. The
+`increaseTotalQuadsWith` observer is not proof that every reallocation path
+is covered. Until the capacity-growth call graph is traced and observed,
+capacity changes must invalidate all candidate-to-slot and quad-derived caches.
+
+### Required gate before any transform cache
+
+1. Obtain the exact target ELF again and map constructor/setter writes to the
+   state consumed by `CCSprite::updateTransform()`.
+2. Trace parent transform invalidation and action/animation updates, not just
+   direct sprite setters.
+3. Establish how subclass overrides are represented and counted in actual
+   batches; unknown implementations always use the original engine path.
+4. Trace all atlas capacity/reallocation paths, including the unhooked
+   `resizeCapacity` route.
+5. Keep the feature observation-only until the above coverage is demonstrated
+   in a runtime trace. A missing event, ambiguous callback, or unknown class
+   invalidates the entire relevant cache.
+
+No transform bypass or renderer change is authorized by this coverage audit.
