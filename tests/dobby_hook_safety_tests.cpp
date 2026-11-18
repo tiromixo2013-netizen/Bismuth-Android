@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #include "dobby.h"
 #include "InterceptRouting/InterceptRouting.h"
@@ -26,6 +28,37 @@ void fail_instruction_relocation(void *, CodeMemBlock *, CodeMemBlock *) {
 }
 
 void replacement_function() {
+}
+
+extern "C" int hooked_function() {
+    return 99;
+}
+
+void run_successful_hook_lifecycle() {
+    const long pageSize = sysconf(_SC_PAGESIZE);
+    assert(pageSize > 0);
+    auto *code = static_cast<std::uint8_t *>(
+        mmap(nullptr, static_cast<std::size_t>(pageSize),
+             PROT_READ | PROT_WRITE | PROT_EXEC,
+             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+    assert(code != MAP_FAILED);
+
+    // x86-64: mov eax, 42; ret; followed by safe padding for relocation.
+    std::memset(code, 0x90, static_cast<std::size_t>(pageSize));
+    const std::array<std::uint8_t, 6> body{0xB8, 0x2A, 0x00, 0x00, 0x00, 0xC3};
+    std::memcpy(code, body.data(), body.size());
+
+    using Function = int (*)();
+    auto target = reinterpret_cast<Function>(code);
+    void *origin = nullptr;
+    assert(target() == 42);
+    assert(DobbyHook(code, reinterpret_cast<void *>(&hooked_function), &origin) == 0);
+    assert(origin != nullptr);
+    assert(target() == 99);
+    assert(reinterpret_cast<Function>(origin)() == 42);
+    assert(DobbyDestroy(code) == 0);
+    assert(target() == 42);
+    assert(munmap(code, static_cast<std::size_t>(pageSize)) == 0);
 }
 
 void run_failure_case(bool fail_allocation) {
@@ -55,6 +88,7 @@ void run_failure_case(bool fail_allocation) {
 int main() {
     run_failure_case(true);
     run_failure_case(false);
-    std::puts("Dobby trampoline/relocation fail-closed tests passed");
+    run_successful_hook_lifecycle();
+    std::puts("Dobby hook failure and install/destroy lifecycle tests passed");
     return 0;
 }
