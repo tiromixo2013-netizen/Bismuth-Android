@@ -70,28 +70,27 @@ No FPS improvement or in-game runtime success is claimed by this adapter.
 
 ### Partial-install failure policy
 
-The passive installer now enters a poisoned state immediately before its
-first Dobby detour attempt. If any later installation step fails, subsequent
-install calls in the same process are rejected with an explicit error. This
-is intentionally conservative: a failed Dobby call may have changed executable
-code even when it did not provide a usable original trampoline, and the
-adapter has not established that reverse-order unpatching is safe while game
-threads may execute. The observer pointer is still published only after the
-entire required hook set succeeds. **This does not guarantee that a partial
-installation is pass-through or safe for the game to continue.** Inspection of
-the exact pinned Dobby source (`a418c6a7c493e6c599713a097ff823c84a40ba96`)
-found that `DobbyHook` calls `routing->Active()` (which patches the target)
-before checking `routing->error`. If that later error check fails, Dobby returns
-an error before publishing the original trampoline and before registering the
-entry in its interceptor table. In that failure shape, the target may already
-be patched, the wrapper may have no original-function pointer, and
-`DobbyDestroy(target)` cannot find the unregistered entry. The installer's
-poisoned state prevents a second attempt but cannot repair
-that historical failure shape. The local pinned-Dobby patch described below
-now prevents preparation errors from reaching Active(), and makes the POSIX
-writer fail before writing if page permissions cannot be changed. Runtime
-fault-injection and device validation are still outstanding, so the adapter
-must remain disabled in normal player sessions.
+The passive installer now uses an explicit process-lifetime state machine:
+`Clean -> Installing -> Installed`, with any early return after the first
+detour attempt transitioning to `Partial`. The observer pointer is published
+only after the full required hook set succeeds. A `Partial` or in-progress
+state rejects all retries until process restart. The earlier one-off
+`DobbyDestroy(updateQuad)` rollback was removed; no detours are unpatched
+while render threads may be executing. This is a fail-closed partial-install
+policy, not an atomic transaction: earlier successful wrappers can remain
+installed for the process lifetime, and the observer remains unpublished.
+
+The local pinned-Dobby patch now prevents trampoline/relocation/backup
+preparation failures from reaching `Active()`, and the POSIX writer fails
+before copying target bytes when page permissions cannot be changed. Host
+tests inject trampoline-allocation failure, relocation failure, and restore
+failure; they verify target bytes remain unchanged on preparation failure and
+that a failed `DobbyDestroy` restore retains its recovery entry for retry.
+A host state-machine test covers Partial and Installed transitions. These
+tests do not prove Android thread quiescence, atomic patching, or that a
+partially installed process is safe to continue after an unexpected runtime
+failure. Keep hooks disabled in normal player sessions until on-device
+validation and mod-coexistence testing pass.
 
 
 ### Original pinned Dobby failure-path audit (before local patch, 2026-11-18)
