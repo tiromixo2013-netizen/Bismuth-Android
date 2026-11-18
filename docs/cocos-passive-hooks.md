@@ -85,7 +85,8 @@ before checking `routing->error`. If that later error check fails, Dobby returns
 an error before publishing the original trampoline and before registering the
 entry in its interceptor table. In that failure shape, the target may already
 be patched, the wrapper may have no original-function pointer, and
-`DobbyDestroy(target)` cannot find the unregistered entry. The installer's poisoned state prevents a second attempt but cannot repair
+`DobbyDestroy(target)` cannot find the unregistered entry. The installer's
+poisoned state prevents a second attempt but cannot repair
 that historical failure shape. The local pinned-Dobby patch described below
 now prevents preparation errors from reaching Active(), and makes the POSIX
 writer fail before writing if page permissions cannot be changed. Runtime
@@ -93,7 +94,7 @@ fault-injection and device validation are still outstanding, so the adapter
 must remain disabled in normal player sessions.
 
 
-### Pinned Dobby failure-path blocker (2026-11-18)
+### Original pinned Dobby failure-path audit (before local patch, 2026-11-18)
 
 The pinned dependency's source was inspected, not inferred from its header:
 
