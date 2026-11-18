@@ -3,6 +3,7 @@
 #include "bismuth/telemetry_gate.hpp"
 #include "bismuth/observer_callback_guard.hpp"
 #include "bismuth/gpu_timer_query.hpp"
+#include "bismuth/hook_install_state.hpp"
 
 #if defined(__ANDROID__) && defined(BISMUTH_ENABLE_COCOS_HOOKS)
 
@@ -109,33 +110,9 @@ std::mutex g_installMutex;
 std::mutex g_gpuHookMutex;
 bool g_gpuDrawHookInstalled = false;
 
-enum class HookInstallState : std::uint8_t {
-    Clean,
-    Installing,
-    Partial,
-    Installed
-};
 // Protected by g_installMutex. A partial install is process-lifetime state:
 // never attempt rollback or a second install while game threads may be active.
 HookInstallState g_hookInstallState = HookInstallState::Clean;
-
-class HookInstallAttemptGuard final {
-public:
-    explicit HookInstallAttemptGuard(HookInstallState& state) noexcept : state_(state) {}
-    ~HookInstallAttemptGuard() {
-        if (!committed_ && state_ == HookInstallState::Installing)
-            state_ = HookInstallState::Partial;
-    }
-    void commit() noexcept {
-        state_ = HookInstallState::Installed;
-        committed_ = true;
-    }
-    HookInstallAttemptGuard(const HookInstallAttemptGuard&) = delete;
-    HookInstallAttemptGuard& operator=(const HookInstallAttemptGuard&) = delete;
-private:
-    HookInstallState& state_;
-    bool committed_ = false;
-};
 
 class ScopedBismuthTrace final {
 public:
