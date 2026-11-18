@@ -309,3 +309,34 @@ This gives a practical distinction for the future observer:
 This action trace remains static analysis only. It does not establish which
 specific actions Geometry Dash invokes in every level, and it does not justify
 hooking these methods or skipping their target setters.
+
+
+### Resolved action target vtable slots (2026-11-18)
+
+The previously observed action dispatch offsets can now be resolved directly
+against the exported `CCNode` vtable in this ELF. The vtable object begins at
+`0x01200120`; accounting for the two-word Itanium ABI header, the target
+virtual-function entries are:
+
+| Action dispatch byte offset from vptr | Resolved target | ELF value |
+|---:|---|---:|
+| `+0x80` | `CCNode::setScaleX(float)` | `0x00aca890` |
+| `+0x90` | `CCNode::setScaleY(float)` | `0x00aca8ac` |
+| `+0xb8` | `CCNode::setPosition(CCPoint const&)` | `0x00aca8c8` |
+| `+0x168` | `CCNode::setRotationX(float)` | `0x00aca820` |
+| `+0x178` | `CCNode::setRotationY(float)` | `0x00aca83c` |
+
+This resolves the standard action path more precisely than the earlier
+unlabelled virtual-call offsets: `CCMoveBy::update` reaches the node position
+setter; `CCScaleTo::update` reaches the independent X/Y scale setters; and
+`CCRotateBy` / `CCRotateTo` reach the independent X/Y rotation setters.
+Disassembly of the scale-X, scale-Y, rotation-X, and rotation-Y setters shows
+that each writes its corresponding field and sets the common transform dirty
+bytes at `this+0x11c` and `this+0x111`.
+
+This confirms that an action observer limited to uniform `setScale` and
+Z-rotation APIs would miss ordinary built-in actions that update the
+independent X/Y components. A setter-level invalidation design must include
+these exact virtual targets, and must still account for subclass overrides,
+custom actions, and `CCCallFunc` callbacks. The result is static evidence
+from the inspected target ELF; no hooks have been installed for these methods.
