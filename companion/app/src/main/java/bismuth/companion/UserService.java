@@ -142,6 +142,18 @@ public final class UserService extends IBismuthUserService.Stub {
                 return (Double.isFinite(parsed) && parsed >= 0 && parsed <= 100) ? parsed : -1;
             } catch (Exception ignored) { return -1; }
         }
+        // Vendor nodes may label a bare number without appending a percent sign,
+        // e.g. "GPU loading: 42" or "utilization 42". Only accept a number when
+        // it follows an explicit utilization/load label; never guess from raw tuples.
+        java.util.regex.Matcher labelled = java.util.regex.Pattern.compile(
+                "(?i)(?:gpu\\s*)?(?:utili[sz]ation|loading|load|busy(?:_percentage)?)\\s*[:=]?\\s*(-?\\d+(?:\\.\\d+)?)")
+                .matcher(value);
+        if (labelled.find()) {
+            try {
+                double parsed = Double.parseDouble(labelled.group(1));
+                return (Double.isFinite(parsed) && parsed >= 0 && parsed <= 100) ? parsed : -1;
+            } catch (Exception ignored) { return -1; }
+        }
         // Plain numeric utilization nodes are also common.
         try {
             double parsed = Double.parseDouble(value);
@@ -222,7 +234,10 @@ public final class UserService extends IBismuthUserService.Stub {
             "/sys/kernel/ged/hal/gpu_busy",
             "/sys/kernel/ged/hal/gpu_busy_percentage",
             "/sys/kernel/debug/ged/hal/gpu_utilization",
-            "/sys/kernel/debug/ged/hal/gpu_loading"
+            "/sys/kernel/debug/ged/hal/gpu_loading",
+            // ARM Mali procfs interface present on some MediaTek kernels.
+            "/proc/mali/utilization",
+            "/proc/mali/utilisation"
         };
         for (String path : ged) {
             double value = readGpuPercent(path);
@@ -324,6 +339,8 @@ public final class UserService extends IBismuthUserService.Stub {
             "/sys/kernel/ged/hal/gpu_busy_percentage",
             "/sys/kernel/debug/ged/hal/gpu_utilization",
             "/sys/kernel/debug/ged/hal/gpu_loading",
+            "/proc/mali/utilization",
+            "/proc/mali/utilisation",
             "/sys/class/misc/mali0/device/utilisation",
             "/sys/class/misc/mali0/device/utilization",
             "/sys/class/misc/mali0/device/load",
