@@ -48,6 +48,23 @@ jobs:
           -DBISMUTH_BUILD_TESTS=OFF
       - name: Build Android ARM64 shared library
         run: cmake --build build-android --parallel
+      - name: Configure experimental patched-Dobby ARM64 build
+        run: >-
+          cmake -S . -B build-android-dobby
+          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+          -DANDROID_ABI=arm64-v8a
+          -DANDROID_PLATFORM=android-26
+          -DBISMUTH_ENABLE_GLES31=ON
+          -DBISMUTH_ENABLE_COCOS_HOOKS=ON
+          -DBISMUTH_ENABLE_ATRACE=OFF
+          -DBISMUTH_BUILD_TESTS=OFF
+      - name: Verify pinned Dobby source patch was applied
+        run: |
+          grep -Fq 'build routing failed before target patch' build-android-dobby/_deps/dobby-src/source/InterceptRouting/InlineHookRouting.h
+          grep -Fq 'Do not write any target bytes unless every page is writable.' build-android-dobby/_deps/dobby-src/source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc
+          grep -Fq 'hook remains registered' build-android-dobby/_deps/dobby-src/source/dobby.cpp
+      - name: Build patched Dobby ARM64 native library
+        run: cmake --build build-android-dobby --parallel
       - name: Verify embedded shader matches source validation logic
         run: |
           grep -Fq 'bool validBounds = all(not(isnan(b)))' build-android/generated/embedded_shaders.hpp
