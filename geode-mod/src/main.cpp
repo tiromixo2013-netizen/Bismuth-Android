@@ -375,20 +375,23 @@ void positionHudPanel() {
     auto* director = CCDirector::sharedDirector();
     if (!director) return;
 
-    // Use the active visible viewport, not the design/window size. This keeps
-    // the HUD inside the actual landscape viewport and respects viewport offsets.
     const auto origin = director->getVisibleOrigin();
     const auto visible = director->getVisibleSize();
-    // Cocos2d node positions are measured from the anchor point. Use a
-    // bottom-left anchor and subtract the full panel height explicitly;
-    // relying on a top-left anchor here placed the panel above the viewport
-    // on some Android landscape viewports.
-    g_bismuthHudPanel->setAnchorPoint({0.f, 0.f});
     const auto panelSize = g_bismuthHudPanel->getContentSize();
+    const auto position = Mod::get()->getSettingValue<std::string>("hud-position");
+
+    const bool right = position == "top-right" || position == "bottom-right";
+    const bool bottom = position == "bottom-left" || position == "bottom-right";
+    g_bismuthHudPanel->setAnchorPoint({0.f, 0.f});
     g_bismuthHudPanel->setPosition({
-        origin.x + 10.f,
-        origin.y + visible.height - panelSize.height - 10.f
+        right ? origin.x + visible.width - panelSize.width - 10.f : origin.x + 10.f,
+        bottom ? origin.y + 10.f : origin.y + visible.height - panelSize.height - 10.f
     });
+
+    if (g_bismuthHud) {
+        g_bismuthHud->setAnchorPoint({right ? 1.f : 0.f, 0.5f});
+        g_bismuthHud->setPosition({right ? panelSize.width - 7.f : 7.f, panelSize.height * 0.5f});
+    }
 }
 
 void createHud(CCNode* controller) {
@@ -417,6 +420,7 @@ void createHud(CCNode* controller) {
     g_bismuthHud->setPosition({7.f, 24.f});
     g_bismuthHud->setColor({238, 244, 250});
     panel->addChild(g_bismuthHud);
+    positionHudPanel();
 
     g_bismuthFpsLabel = nullptr;
     g_bismuthCpuLabel = nullptr;
@@ -453,8 +457,10 @@ void syncHud(CCNode* controller) {
         return;
     }
     if (!g_bismuthHudPanel && controller) createHud(controller);
-    // The game is landscape-locked; position once on creation rather than
-    // issuing redundant node transforms every frame.
+    // Re-read the selected corner on the existing 1 Hz settings-sync path.
+    // This makes corner changes apply during the current session without
+    // adding per-frame layout work.
+    if (g_bismuthHudPanel) positionHudPanel();
 }
 
 void updateHud(float dt, double updateCpuMs) {
