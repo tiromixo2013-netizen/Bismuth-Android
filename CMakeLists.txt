@@ -101,7 +101,16 @@ if(BISMUTH_BUILD_TESTS)
       PATCH_COMMAND ${CMAKE_COMMAND} -DDOBBY_SOURCE_DIR=<SOURCE_DIR>
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_dobby.cmake)
     FetchContent_MakeAvailable(dobby_patch_test)
-    add_executable(bismuth_dobby_code_patch_tests tests/dobby_code_patch_tests.cpp)
+    add_executable(bismuth_dobby_code_patch_tests
+      tests/dobby_code_patch_tests.cpp
+      "${dobby_patch_test_SOURCE_DIR}/source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc")
+    target_include_directories(bismuth_dobby_code_patch_tests PRIVATE
+      "${dobby_patch_test_SOURCE_DIR}"
+      "${dobby_patch_test_SOURCE_DIR}/include"
+      "${dobby_patch_test_SOURCE_DIR}/source"
+      "${dobby_patch_test_SOURCE_DIR}/external"
+      "${dobby_patch_test_SOURCE_DIR}/external/logging"
+      "${dobby_patch_test_SOURCE_DIR}/builtin-plugin")
     target_link_libraries(bismuth_dobby_code_patch_tests PRIVATE dobby)
     add_test(NAME dobby_code_patch_tests COMMAND bismuth_dobby_code_patch_tests)
   endif()
