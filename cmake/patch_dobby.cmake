@@ -471,3 +471,75 @@ replace_once("source/Interceptor.h"
 #else
       auto result = DobbyCodePatch((void *)patched.addr(), origin_code_, patched.size);
 #endif]=])
+
+replace_once("source/TrampolineBridge/Trampoline/Trampoline.h"
+[=[struct Trampoline {
+  int type;
+  CodeMemBlock buffer;
+
+  Trampoline *forward_trampoline;
+
+  Trampoline() : type(0), buffer() {
+  }
+
+  Trampoline(int type, CodeMemBlock buffer) : type(type), buffer(buffer) {
+  }
+
+  Trampoline(int type, CodeMemBlock buffer, Trampoline *forward)
+      : type(type), buffer(buffer), forward_trampoline(forward) {
+  }
+
+  addr_t addr() {]=]
+[=[struct Trampoline {
+  int type;
+  CodeMemBlock buffer;
+  Trampoline *forward_trampoline;
+  bool owns_buffer;
+
+  Trampoline() : type(0), buffer(), forward_trampoline(nullptr), owns_buffer(false) {
+  }
+
+  Trampoline(int type, CodeMemBlock buffer, bool owns_buffer = false)
+      : type(type), buffer(buffer), forward_trampoline(nullptr), owns_buffer(owns_buffer) {
+  }
+
+  Trampoline(int type, CodeMemBlock buffer, Trampoline *forward, bool owns_buffer = false)
+      : type(type), buffer(buffer), forward_trampoline(forward), owns_buffer(owns_buffer) {
+  }
+
+  ~Trampoline() {
+    delete forward_trampoline;
+    forward_trampoline = nullptr;
+    if (owns_buffer && buffer.addr())
+      operator delete((void *)buffer.addr());
+    buffer.reset(0, 0);
+  }
+
+  Trampoline(const Trampoline &) = delete;
+  Trampoline &operator=(const Trampoline &) = delete;
+
+  addr_t addr() {]=])
+
+replace_once("source/TrampolineBridge/Trampoline/trampoline_arm64.cc"
+[=[  auto tramp = new Trampoline(tramp_type, tramp_block);]=]
+[=[  auto tramp = new Trampoline(tramp_type, tramp_block, true);]=])
+
+replace_once("source/InterceptRouting/NearBranchTrampoline/near_trampoline_arm64.cc"
+[=[  auto tramp = new Trampoline(tramp_type, tramp_block, forward_tramp);]=]
+[=[  auto tramp = new Trampoline(tramp_type, tramp_block, forward_tramp, true);]=])
+
+replace_once("source/TrampolineBridge/Trampoline/trampoline_x64.cc"
+[=[  auto tramp = new Trampoline(TRAMPOLINE_X64_JMP, tramp_block);]=]
+[=[  auto tramp = new Trampoline(TRAMPOLINE_X64_JMP, tramp_block, true);]=])
+
+replace_once("source/InterceptRouting/InlineHookRouting.h"
+[=[  gInterceptor.add(entry);
+
+  return 0;]=]
+[=[  gInterceptor.add(entry);
+  // DobbyCodePatch copied the patch bytes into the target. Release staging
+  // buffers now; the relocated original-function block is allocator-owned.
+  entry->routing = nullptr;
+  delete routing;
+
+  return 0;]=])
