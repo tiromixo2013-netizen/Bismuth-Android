@@ -267,6 +267,20 @@ replace_once("source/Interceptor.h"
     }]=])
 
 replace_once("source/Interceptor.h"
+[=[    void backup_orig_code() {
+      __FUNC_CALL_TRACE__();
+      auto orig = (uint8_t *)this->addr;
+      uint32_t tramp_size = this->patched.size;
+      origin_code_ = (uint8_t *)operator new(tramp_size);
+      memcpy(origin_code_, orig, tramp_size);
+    }
+
+    void restore_orig_code() {
+      __FUNC_CALL_TRACE__();
+      DobbyCodePatch((void *)patched.addr(), origin_code_, patched.size);
+      operator delete(origin_code_);
+      origin_code_ = nullptr;
+    }]=]
 [=[    bool backup_orig_code() {
       __FUNC_CALL_TRACE__();
       if (!patched.addr() || !patched.size)
@@ -288,30 +302,6 @@ replace_once("source/Interceptor.h"
       if (result != 0)
         return false;
       free(origin_code_);
-      origin_code_ = nullptr;
-      return true;
-    }]=]
-[=[    bool backup_orig_code() {
-      __FUNC_CALL_TRACE__();
-      if (!patched.addr() || !patched.size)
-        return false;
-      auto orig = (uint8_t *)this->addr;
-      uint32_t tramp_size = this->patched.size;
-      origin_code_ = (uint8_t *)operator new(tramp_size);
-      if (!origin_code_)
-        return false;
-      memcpy(origin_code_, orig, tramp_size);
-      return true;
-    }
-
-    bool restore_orig_code() {
-      __FUNC_CALL_TRACE__();
-      if (!origin_code_ || !patched.addr() || !patched.size)
-        return false;
-      auto result = DobbyCodePatch((void *)patched.addr(), origin_code_, patched.size);
-      if (result != 0)
-        return false;
-      operator delete(origin_code_);
       origin_code_ = nullptr;
       return true;
     }]=])
