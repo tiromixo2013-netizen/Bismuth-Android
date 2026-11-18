@@ -42,7 +42,7 @@ public final class UserService extends IBismuthUserService.Stub {
     private boolean isCurrentRun(int runId) {
         return running && generation == runId;
     }
-    @Override public String getStatus() { return status; }
+    @Override public String getStatus() { return status + "\\n\\n" + thermalDiagnostics(); }
 
     private void serve(int runId) {
         ServerSocket server = null;
@@ -315,16 +315,71 @@ public final class UserService extends IBismuthUserService.Stub {
         }
         return -1;
     }
+    private static boolean isWantedThermalType(String type, String wanted) {
+        String n = type.toLowerCase(Locale.ROOT);
+        if ("cpu".equals(wanted)) return n.contains("cpu") || n.contains("mtktscpu");
+        if ("gpu".equals(wanted)) return n.contains("gpu") || n.contains("mali") || n.contains("gpuss");
+        return n.contains(wanted);
+    }
+
+    private static double normalizeTemperature(long raw) {
+        if (raw <= 0) return -1;
+        if (raw < 150000) return raw / 1000.0; // millidegrees Celsius
+        if (raw < 150000000) return raw / 1000000.0; // microdegrees Celsius
+        return -1;
+    }
+
     private static double temperature(String wanted) {
-        File[] zones=new File("/sys/class/thermal").listFiles((d,n)->n.startsWith("thermal_zone"));
-        if(zones==null)return -1; double hottest=-1;
-        for(File z:zones)try{
-            String type=readText(new File(z,"type").getPath()).toLowerCase(Locale.ROOT);
-            if(!type.contains(wanted))continue;
-            long raw=readLong(new File(z,"temp").getPath());
-            if(raw>0&&raw<150000)hottest=Math.max(hottest,raw/1000.0);
-        }catch(Exception ignored){}
+        double hottest = -1;
+        File[] zones = new File("/sys/class/thermal").listFiles((d,n) -> n.startsWith("thermal_zone"));
+        if (zones != null) for (File z : zones) try {
+            String type = readText(new File(z, "type").getPath());
+            if (!isWantedThermalType(type, wanted)) continue;
+            double value = normalizeTemperature(readLong(new File(z, "temp").getPath()));
+            if (value > 0 && value < 150) hottest = Math.max(hottest, value);
+        } catch (Exception ignored) {}
+
+        // Some vendor kernels publish labelled sensors through hwmon instead of thermal_zone.
+        File[] hwmons = new File("/sys/class/hwmon").listFiles((d,n) -> n.startsWith("hwmon"));
+        if (hwmons != null) for (File hw : hwmons) try {
+            String hwName = "";
+            File nameFile = new File(hw, "name");
+            if (nameFile.isFile()) hwName = readText(nameFile.getPath());
+            File[] inputs = hw.listFiles((d,n) -> n.matches("temp[0-9]+_input"));
+            if (inputs == null) continue;
+            for (File input : inputs) {
+                String index = input.getName().replace("_input", "");
+                File label = new File(hw, index + "_label");
+                String sensorName = hwName;
+                if (label.isFile()) sensorName += " " + readText(label.getPath());
+                if (!isWantedThermalType(sensorName, wanted)) continue;
+                double value = normalizeTemperature(readLong(input.getPath()));
+                if (value > 0 && value < 150) hottest = Math.max(hottest, value);
+            }
+        } catch (Exception ignored) {}
         return hottest;
+    }
+
+    private static String thermalDiagnostics() {
+        StringBuilder out = new StringBuilder("Thermal diagnostics:");
+        File[] zones = new File("/sys/class/thermal").listFiles((d,n) -> n.startsWith("thermal_zone"));
+        int count = 0;
+        if (zones != null) for (File z : zones) {
+            if (count++ >= 18) { out.append("\\n…"); break; }
+            try {
+                String type = readText(new File(z, "type").getPath());
+                String raw = readText(new File(z, "temp").getPath());
+                out.append("\\n").append(z.getName()).append(" [").append(type).append("]=").append(raw);
+            } catch (Exception e) { out.append("\\n").append(z.getName()).append(" [unreadable]"); }
+        }
+        if (count == 0) out.append("\\nNo readable thermal_zone entries");
+        File[] hwmons = new File("/sys/class/hwmon").listFiles((d,n) -> n.startsWith("hwmon"));
+        if (hwmons != null) for (File hw : hwmons) try {
+            File name = new File(hw, "name");
+            if (name.isFile()) out.append("\\nhwmon ").append(hw.getName()).append(": ").append(readText(name.getPath()));
+        } catch (Exception ignored) {}
+        out.append("\\nMatched CPU=").append(temperature("cpu")).append("C GPU=").append(temperature("gpu")).append("C");
+        return out.toString();
     }
     private static long[] memory() {
         try(BufferedReader r=new BufferedReader(new FileReader("/proc/meminfo"))){
