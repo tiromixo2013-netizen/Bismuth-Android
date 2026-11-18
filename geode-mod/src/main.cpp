@@ -393,8 +393,9 @@ void positionHudPanel() {
 void createHud(CCNode* controller) {
     if (!Mod::get()->getSettingValue<bool>("hud-enabled") || !controller) return;
 
-    // Compact cool-white, high-contrast HUD pinned to the visible upper-left corner.
-    auto panel = CCLayerColor::create({226, 239, 246, 244}, 210.f, 158.f);
+    // QOL-style compact telemetry: one small label, avoiding multiple TTF
+    // texture rebuilds and decorative bars during gameplay.
+    auto panel = CCLayerColor::create({20, 25, 32, 190}, 184.f, 38.f);
     if (!panel) return;
     panel->setAnchorPoint({0.f, 1.f});
     panel->setPosition(CCPointZero);
@@ -402,43 +403,31 @@ void createHud(CCNode* controller) {
     controller->addChild(panel, 1);
     g_bismuthHudPanel = panel;
 
-    auto addLabel = [&](const char* value, float y, float fontSize, ccColor3B color) -> CCLabelTTF* {
-        auto* label = CCLabelTTF::create(value, "Roboto", fontSize);
-        if (!label) return nullptr;
-        label->setAnchorPoint({0.f, 0.5f});
-        label->setPosition({8.f, y});
-        label->setColor(color);
-        panel->addChild(label);
-        return label;
-    };
+    g_bismuthHud = CCLabelTTF::create(
+        "FPS -- | CPU -- | GPU --\nRAM -- | TEMP -- | P95 --",
+        "Roboto", 7.5f
+    );
+    if (!g_bismuthHud) {
+        g_bismuthHudPanel = nullptr;
+        panel->removeFromParentAndCleanup(true);
+        return;
+    }
+    g_bismuthHud->setAnchorPoint({0.f, 0.5f});
+    g_bismuthHud->setPosition({7.f, 19.f});
+    g_bismuthHud->setColor({238, 244, 250});
+    panel->addChild(g_bismuthHud);
 
-    addLabel("BISMUTH  •  LIVE", 146.f, 8.f, {45, 91, 115});
-    g_bismuthFpsLabel = addLabel("FPS --", 126.f, 17.f, {20, 112, 82});
-    g_bismuthHud = addLabel("FRAME -- ms", 109.f, 8.f, {35, 52, 65});
-    g_bismuthCpuLabel = addLabel("CPU  --", 92.f, 8.f, {30, 77, 105});
-    g_bismuthGpuLabel = addLabel("GPU  N/A", 71.f, 8.f, {75, 62, 125});
-    g_bismuthRamLabel = addLabel("RAM  N/A", 49.f, 7.5f, {35, 52, 65});
-    g_bismuthThermalLabel = addLabel("TEMP  CPU N/A  GPU N/A", 34.f, 7.5f, {35, 52, 65});
-    g_bismuthAdvancedLabel = addLabel("P95 N/A  |  1% low N/A", 19.f, 7.f, {45, 65, 78});
-    g_bismuthGraphLabel = addLabel("", 6.f, 6.f, {37, 94, 105});
-
-    auto makeBar = [&](float y, ccColor4B fillColor, CCLayerColor*& fill) {
-        auto* bg = CCLayerColor::create({185, 202, 211, 255}, 194.f, 3.f);
-        if (!bg) return;
-        bg->setAnchorPoint({0.f, 0.5f});
-        bg->setPosition({8.f, y});
-        panel->addChild(bg);
-        fill = CCLayerColor::create(fillColor, 1.f, 3.f);
-        if (fill) {
-            fill->setAnchorPoint({0.f, 0.5f});
-            bg->addChild(fill);
-        }
-    };
-    makeBar(84.f, {35, 164, 125, 255}, g_bismuthCpuFill);
-    makeBar(63.f, {112, 94, 190, 255}, g_bismuthGpuFill);
-
+    g_bismuthFpsLabel = nullptr;
+    g_bismuthCpuLabel = nullptr;
+    g_bismuthGpuLabel = nullptr;
+    g_bismuthRamLabel = nullptr;
+    g_bismuthThermalLabel = nullptr;
+    g_bismuthAdvancedLabel = nullptr;
+    g_bismuthGraphLabel = nullptr;
+    g_bismuthCpuFill = nullptr;
+    g_bismuthGpuFill = nullptr;
     g_lastHudText.clear();
-    log::info("BISMUTH HUD initialized: compact cool-white top-left metrics panel.");
+    log::info("BISMUTH HUD initialized: compact single-label telemetry overlay.");
 }
 
 void syncHud(CCNode* controller) {
@@ -468,7 +457,7 @@ void syncHud(CCNode* controller) {
 }
 
 void updateHud(float dt, double updateCpuMs) {
-    if (!g_bismuthHud || !g_bismuthHudPanel || !g_bismuthFpsLabel) return;
+    if (!g_bismuthHud || !g_bismuthHudPanel) return;
 
     if (std::isfinite(updateCpuMs) && updateCpuMs >= 0.0 && updateCpuMs < 10000.0) {
         g_cpuUpdateMs[g_cpuSampleCursor] = updateCpuMs;
@@ -483,118 +472,89 @@ void updateHud(float dt, double updateCpuMs) {
         g_frameIntervalCount = std::min(g_frameIntervalCount + 1, g_frameIntervalsMs.size());
         if (frameMs > 33.3f) ++g_hitchCount;
         ++g_updateCount;
-        if ((g_updateCount % 12u) == 0u) refreshPercentiles();
+        if ((g_updateCount % 12u) == 0u &&
+            Mod::get()->getSettingValue<bool>("hud-advanced")) refreshPercentiles();
     }
 
-    // Avoid rebuilding TTF textures on every game update; refresh at 4 Hz.
+    // Keep display updates at 4 Hz, but do filesystem/sensor sampling only at 1 Hz.
+    static float metricSampleAccumulator = 1.f;
+    static double cachedCpu = -1.0, cachedGpu = -1.0;
+    static double cachedCpuTemp = -1.0, cachedGpuTemp = -1.0;
+    static double cachedProcessRss = -1.0;
     g_hudRefreshAccumulator += std::max(0.f, dt);
+    metricSampleAccumulator += std::max(0.f, dt);
     if (g_hudRefreshAccumulator < 0.25f) return;
     g_hudRefreshAccumulator = std::fmod(g_hudRefreshAccumulator, 0.25f);
 
-    const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
-    const float loopFps = frameMs > 0.f ? 1000.f / frameMs : 0.f;
-    const float lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.f / g_cachedP99Ms : 0.f;
+    if (metricSampleAccumulator >= 1.f) {
+        metricSampleAccumulator = std::fmod(metricSampleAccumulator, 1.f);
+        cachedCpu = Mod::get()->getSettingValue<bool>("monitor-cpu") ? sampleProcessCpuPercent() : -1.0;
+        cachedGpu = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
+        const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
+        cachedCpuTemp = thermalEnabled ? readThermalZoneC("cpu") : -1.0;
+        cachedGpuTemp = thermalEnabled ? readThermalZoneC("gpu") : -1.0;
+        cachedProcessRss = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
+    }
+
+    if (cachedGpu < 0.0) cachedGpu = g_shizukuSnapshot.gpu;
+    if (cachedCpuTemp < 0.0) cachedCpuTemp = g_shizukuSnapshot.cpuTemp;
+    if (cachedGpuTemp < 0.0) cachedGpuTemp = g_shizukuSnapshot.gpuTemp;
+
+    const double cpuShown = cachedCpu >= 0.0 ? cachedCpu : g_shizukuSnapshot.deviceCpu;
+    const double systemRamUsed = g_shizukuSnapshot.ramUsedMb;
+    const double systemRamTotal = g_shizukuSnapshot.ramTotalMb;
+
     double averageFrameMs = 0.0;
     if (g_frameIntervalCount) {
-        for (std::size_t i = 0; i < g_frameIntervalCount; ++i) averageFrameMs += g_frameIntervalsMs[i];
+        for (std::size_t i = 0; i < g_frameIntervalCount; ++i)
+            averageFrameMs += g_frameIntervalsMs[i];
         averageFrameMs /= static_cast<double>(g_frameIntervalCount);
     }
     const double averageFps = averageFrameMs > 0.0 ? 1000.0 / averageFrameMs : 0.0;
-    const double targetFps = readEngineTargetFps();
-    const double gameCpuPercent = Mod::get()->getSettingValue<bool>("monitor-cpu") ? sampleProcessCpuPercent() : -1.0;
-    double gpuPercent = Mod::get()->getSettingValue<bool>("monitor-gpu") ? sampleGpuPercent() : -1.0;
-    const bool thermalEnabled = Mod::get()->getSettingValue<bool>("monitor-thermal");
-    double cpuTempC = thermalEnabled ? readThermalZoneC("cpu") : -1.0;
-    double gpuTempC = thermalEnabled ? readThermalZoneC("gpu") : -1.0;
-    if (gpuPercent < 0.0) gpuPercent = g_shizukuSnapshot.gpu;
-    if (cpuTempC < 0.0) cpuTempC = g_shizukuSnapshot.cpuTemp;
-    if (gpuTempC < 0.0) gpuTempC = g_shizukuSnapshot.gpuTemp;
-
-
-    const double processRssMb = Mod::get()->getSettingValue<bool>("hud-memory") ? readProcessRssMb() : -1.0;
+    const float frameMs = (std::isfinite(dt) && dt > 0.f) ? dt * 1000.f : 0.f;
+    const double fpsShown = averageFps > 0.0 ? averageFps : (frameMs > 0.f ? 1000.0 / frameMs : 0.0);
+    const double lowFpsEstimate = g_cachedP99Ms > 0.f ? 1000.0 / g_cachedP99Ms : 0.0;
     const bool advanced = Mod::get()->getSettingValue<bool>("hud-advanced");
-    const bool graphEnabled = advanced && Mod::get()->getSettingValue<bool>("hud-graph");
-    const bool rendererEnabled = Mod::get()->getSettingValue<bool>("renderer-telemetry");
-    const double batchCpuMs = static_cast<double>(g_batchCpuNsLast) / 1000000.0;
-    std::ostringstream fpsText;
-    fpsText.setf(std::ios::fixed);
-    fpsText.precision(0);
-    fpsText << "FPS " << loopFps;
-    g_bismuthFpsLabel->setString(fpsText.str().c_str());
 
-    std::ostringstream frameOut;
-    frameOut.setf(std::ios::fixed);
-    frameOut.precision(1);
-    frameOut << "FRAME " << frameMs << " ms";
-    g_bismuthHud->setString(frameOut.str().c_str());
+    std::ostringstream compact;
+    compact.setf(std::ios::fixed);
+    compact << "FPS " << std::setprecision(0) << fpsShown
+            << " | CPU ";
+    if (cpuShown >= 0.0) compact << std::setprecision(0) << cpuShown << "%";
+    else compact << "N/A";
+    compact << " | GPU ";
+    if (cachedGpu >= 0.0) compact << std::setprecision(0) << cachedGpu << "%";
+    else compact << "N/A";
 
-    const double cpuShown = gameCpuPercent >= 0.0 ? gameCpuPercent : g_shizukuSnapshot.deviceCpu;
-    if (g_bismuthCpuLabel) {
-        std::ostringstream value;
-        value.setf(std::ios::fixed); value.precision(0);
-        if (cpuShown >= 0.0) value << "CPU  " << cpuShown << "%";
-        else value << "CPU  N/A";
-        g_bismuthCpuLabel->setString(value.str().c_str());
-    }
-    if (g_bismuthGpuLabel) {
-        std::ostringstream value;
-        value.setf(std::ios::fixed); value.precision(0);
-        if (gpuPercent >= 0.0) value << "GPU  " << gpuPercent << "%";
-        else value << "GPU  N/A";
-        g_bismuthGpuLabel->setString(value.str().c_str());
-    }
+    compact << "\\nRAM ";
+    if (systemRamUsed >= 0.0 && systemRamTotal > 0.0)
+        compact << std::setprecision(1) << systemRamUsed / 1024.0 << "/" << systemRamTotal / 1024.0 << "G";
+    else if (cachedProcessRss >= 0.0)
+        compact << std::setprecision(1) << "APP " << cachedProcessRss / 1024.0 << "G";
+    else compact << "N/A";
 
-    const double systemRamUsed = g_shizukuSnapshot.ramUsedMb;
-    const double systemRamTotal = g_shizukuSnapshot.ramTotalMb;
-    if (g_bismuthRamLabel) {
-        std::ostringstream value;
-        value.setf(std::ios::fixed); value.precision(1);
-        value << "RAM ";
-        if (processRssMb >= 0.0) value << "APP " << processRssMb / 1024.0 << "G";
-        else value << "APP N/A";
-        if (systemRamUsed >= 0.0 && systemRamTotal > 0.0)
-            value << "  SYS " << systemRamUsed / 1024.0 << "/" << systemRamTotal / 1024.0 << "G";
-        g_bismuthRamLabel->setString(value.str().c_str());
+    compact << " | TEMP ";
+    if (cachedCpuTemp >= 0.0 || cachedGpuTemp >= 0.0) {
+        compact << "C";
+        if (cachedCpuTemp >= 0.0) compact << std::setprecision(0) << cachedCpuTemp;
+        else compact << "--";
+        compact << "/G";
+        if (cachedGpuTemp >= 0.0) compact << std::setprecision(0) << cachedGpuTemp;
+        else compact << "--";
+    } else compact << "N/A";
+
+    if (advanced && g_frameIntervalCount > 0) {
+        compact << " | P95 " << std::setprecision(1) << g_cachedP95Ms << "ms";
+        if (lowFpsEstimate > 0.0)
+            compact << " | 1% " << std::setprecision(0) << lowFpsEstimate;
     }
 
-    if (g_bismuthThermalLabel) {
-        std::ostringstream value;
-        value.setf(std::ios::fixed); value.precision(0);
-        value << "TEMP  CPU ";
-        if (cpuTempC >= 0.0) value << cpuTempC << "C"; else value << "N/A";
-        value << "  GPU ";
-        if (gpuTempC >= 0.0) value << gpuTempC << "C"; else value << "N/A";
-        g_bismuthThermalLabel->setString(value.str().c_str());
+    const std::string text = compact.str();
+    if (text != g_lastHudText) {
+        g_bismuthHud->setString(text.c_str());
+        g_lastHudText = text;
     }
-
-    if (g_bismuthAdvancedLabel) {
-        std::ostringstream value;
-        value.setf(std::ios::fixed); value.precision(1);
-        if (advanced && g_frameIntervalCount) {
-            value << "P95 " << g_cachedP95Ms << "ms  |  1% low ";
-            if (lowFpsEstimate > 0.0) value << std::fixed << std::setprecision(0) << lowFpsEstimate;
-            else value << "N/A";
-        } else {
-            value << "ADVANCED OFF";
-        }
-        g_bismuthAdvancedLabel->setString(value.str().c_str());
-    }
-
-    if (g_bismuthGraphLabel) {
-        const std::string graph = graphEnabled ? makeFrameGraph() : std::string("GRAPH OFF");
-        g_bismuthGraphLabel->setString(graph.c_str());
-    }
-
-    const auto setFill = [](CCLayerColor* fill, double percent) {
-        if (!fill) return;
-        const float width = percent >= 0.0 ? static_cast<float>(194.0 * std::clamp(percent, 0.0, 100.0) / 100.0) : 1.f;
-        fill->setContentSize({std::max(1.f, width), 3.f});
-        fill->setVisible(percent >= 0.0);
-    };
-    setFill(g_bismuthCpuFill, cpuShown);
-    setFill(g_bismuthGpuFill, gpuPercent);
-    const std::string frameText = frameOut.str();
-
+}
 }
 }
 
