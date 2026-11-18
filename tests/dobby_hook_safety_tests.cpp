@@ -10,6 +10,8 @@
 #include "InterceptRouting/InterceptRouting.h"
 
 namespace {
+void replacement_function();
+
 std::array<std::uint8_t, 32> trampoline_storage{};
 
 Trampoline *fail_trampoline_allocation(addr_t, addr_t) {
