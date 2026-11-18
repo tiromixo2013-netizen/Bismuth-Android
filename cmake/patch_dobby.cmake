@@ -319,3 +319,47 @@ replace_once("source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc"
     restore_second = mprotect((void *)patch_end_page, page_size, PROT_READ | PROT_EXEC);
   if (restore_first != 0 || restore_second != 0)
     ERROR_LOG("code patch is active, but restoring RX page permissions failed");]=])
+
+replace_once("source/InterceptRouting/InlineHookRouting.h"
+[=[  if (out_origin_func) {
+    *out_origin_func = (void *)entry->relocated.addr();
+  }
+  features::apple::arm64e_pac_strip_and_sign(*out_origin_func);]=]
+[=[  if (out_origin_func) {
+    *out_origin_func = (void *)entry->relocated.addr();
+    features::apple::arm64e_pac_strip_and_sign(*out_origin_func);
+  }]=])
+
+replace_once("source/InterceptRouting/InlineHookRouting.h"
+[=[  if (routing->error) {
+    ERROR_LOG("target patch failed; attempting original-byte restore");
+    if (!entry->restore_orig_code())
+      ERROR_LOG("CRITICAL: original-byte restore failed; process must be treated as compromised");
+    delete routing;
+    delete entry;
+    return -1;
+  }]=]
+[=[  if (routing->error) {
+    // POSIX DobbyCodePatch reports failure only before memcpy, so no target bytes changed.
+    ERROR_LOG("target patch failed before any target bytes were written");
+    delete routing;
+    delete entry;
+    return -1;
+  }]=])
+
+replace_once("source/InterceptRouting/InstrumentRouting.h"
+[=[  if (routing->error) {
+    ERROR_LOG("instrument target patch failed; attempting original-byte restore");
+    if (!entry->restore_orig_code())
+      ERROR_LOG("CRITICAL: instrument restore failed; process must be treated as compromised");
+    delete routing;
+    delete entry;
+    return -1;
+  }]=]
+[=[  if (routing->error) {
+    // POSIX DobbyCodePatch reports failure only before memcpy, so no target bytes changed.
+    ERROR_LOG("instrument target patch failed before any target bytes were written");
+    delete routing;
+    delete entry;
+    return -1;
+  }]=])
