@@ -135,22 +135,30 @@ private:
                   std::uint64_t* countOut = nullptr) const {
         out.clear();
         if (!isValidBounds(b)) return false;
-        const double inv = 1.0 / static_cast<double>(cellSize_);
-        const double minXd = std::floor(static_cast<double>(b.left) * inv);
-        const double maxXd = std::floor(static_cast<double>(b.right) * inv);
-        const double minYd = std::floor(static_cast<double>(b.bottom) * inv);
-        const double maxYd = std::floor(static_cast<double>(b.top) * inv);
-        constexpr double lo = static_cast<double>(std::numeric_limits<std::int64_t>::min());
-        constexpr double hi = static_cast<double>(std::numeric_limits<std::int64_t>::max());
+        const long double inv = 1.0L / static_cast<long double>(cellSize_);
+        const long double minXd = std::floor(static_cast<long double>(b.left) * inv);
+        const long double maxXd = std::floor(static_cast<long double>(b.right) * inv);
+        const long double minYd = std::floor(static_cast<long double>(b.bottom) * inv);
+        const long double maxYd = std::floor(static_cast<long double>(b.top) * inv);
+        constexpr long double lo =
+            static_cast<long double>(std::numeric_limits<std::int64_t>::min());
+        constexpr long double hi =
+            static_cast<long double>(std::numeric_limits<std::int64_t>::max());
         if (minXd < lo || maxXd > hi || minYd < lo || maxYd > hi) return false;
         const auto minX = static_cast<std::int64_t>(minXd);
         const auto maxX = static_cast<std::int64_t>(maxXd);
         const auto minY = static_cast<std::int64_t>(minYd);
         const auto maxY = static_cast<std::int64_t>(maxYd);
-        const std::uint64_t nx = static_cast<std::uint64_t>(maxX - minX) + 1u;
-        const std::uint64_t ny = static_cast<std::uint64_t>(maxY - minY) + 1u;
-        if (nx == 0u || ny == 0u || nx > limit || ny > limit || nx > limit / ny)
-            return false;
+        const long double nxWide =
+            static_cast<long double>(maxX) - static_cast<long double>(minX) + 1.0L;
+        const long double nyWide =
+            static_cast<long double>(maxY) - static_cast<long double>(minY) + 1.0L;
+        if (nxWide < 1.0L || nyWide < 1.0L ||
+            nxWide > static_cast<long double>(limit) ||
+            nyWide > static_cast<long double>(limit)) return false;
+        const auto nx = static_cast<std::uint64_t>(nxWide);
+        const auto ny = static_cast<std::uint64_t>(nyWide);
+        if (nx > limit / ny) return false;
         const std::uint64_t count = nx * ny;
         if (countOut) *countOut = count;
         out.reserve(static_cast<std::size_t>(count));
