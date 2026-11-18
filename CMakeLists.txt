@@ -52,7 +52,9 @@ if(ANDROID AND BISMUTH_ENABLE_GLES31)
     FetchContent_Declare(dobby
       GIT_REPOSITORY https://github.com/Linifadomra/Dobby.git
       GIT_TAG a418c6a7c493e6c599713a097ff823c84a40ba96
-      GIT_SHALLOW FALSE)
+      GIT_SHALLOW FALSE
+      PATCH_COMMAND ${CMAKE_COMMAND} -DDOBBY_SOURCE_DIR=<SOURCE_DIR>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_dobby.cmake)
     FetchContent_MakeAvailable(dobby)
   endif()
 
