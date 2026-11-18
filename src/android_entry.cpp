@@ -45,7 +45,9 @@ static_assert(offsetof(BismuthAtlasTelemetry, frame_interval_last_ns) ==
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
-    // APK injection loads Bismuth immediately after cocos2dcpp.
+#if defined(BISMUTH_ENABLE_COCOS_HOOKS)
+    // Explicit opt-in only. The pinned Dobby revision has an unsafe
+    // post-patch failure path; never install its detours in a normal build.
     auto* instance = new (std::nothrow) BismuthInstance{};
     if (!instance) {
         g_autoHookStatus = -1;
@@ -62,17 +64,25 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
         g_autoHookError = message;
         delete instance;
     }
-    // A failed version check must never prevent the game itself from loading.
+#else
+    // Safe default: load the library without modifying Cocos executable code.
+    g_autoHookStatus = 0;
+    g_autoHookError = "Cocos hooks are disabled in this build (unsafe pinned Dobby failure path)";
+#endif
     return JNI_VERSION_1_6;
 }
 extern "C" const char* bismuth_android_build_id() {
     return "Bismuth-Android 0.8.0-passive-telemetry-gate";
 }
 extern "C" std::uint32_t bismuth_android_capabilities() {
-    return BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
-           BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API |
-           BISMUTH_CAP_COCOS_PASSIVE_HOOKS | BISMUTH_CAP_GPU_DRAW_BRIDGE |
-           BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL | BISMUTH_CAP_GPU_TIMER_QUERY;
+    std::uint32_t capabilities = BISMUTH_CAP_NATIVE_LIBRARY | BISMUTH_CAP_GLES31_COMPUTE |
+        BISMUTH_CAP_ATLAS_INDEX_OUTPUT | BISMUTH_CAP_PASSIVE_OBSERVER_API |
+        BISMUTH_CAP_PASSIVE_TELEMETRY_CONTROL;
+#if defined(BISMUTH_ENABLE_COCOS_HOOKS)
+    capabilities |= BISMUTH_CAP_COCOS_PASSIVE_HOOKS | BISMUTH_CAP_GPU_DRAW_BRIDGE |
+                    BISMUTH_CAP_GPU_TIMER_QUERY;
+#endif
+    return capabilities;
 }
 extern "C" void* bismuth_create() {
     return new (std::nothrow) BismuthInstance{};
