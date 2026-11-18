@@ -526,7 +526,7 @@ void updateHud(float dt, double updateCpuMs) {
     if (cachedGpu >= 0.0) compact << std::setprecision(0) << cachedGpu << "%";
     else compact << "N/A";
 
-    compact << "\\nRAM ";
+    compact << "\nRAM ";
     if (systemRamUsed >= 0.0 && systemRamTotal > 0.0)
         compact << std::setprecision(1) << systemRamUsed / 1024.0 << "/" << systemRamTotal / 1024.0 << "G";
     else if (cachedProcessRss >= 0.0)
@@ -554,7 +554,6 @@ void updateHud(float dt, double updateCpuMs) {
         g_bismuthHud->setString(text.c_str());
         g_lastHudText = text;
     }
-}
 }
 }
 
