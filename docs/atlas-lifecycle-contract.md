@@ -267,3 +267,77 @@ No hierarchy or resize hooks are added in this pass. A transform cache remains
 ineligible: parent/child graph changes, subclass virtual dispatch, batch
 membership, Z-order changes, and capacity reallocations are not yet covered
 by a complete runtime observer. The original Cocos2d path remains authoritative.
+
+
+## Capacity-resize call graph and failure semantics (2026-11-18)
+
+The exact target ELF (`libcocos2dcpp.so`, Build ID
+`ca621323d54c1d94f5f13a2778ce9c8baa31b9a8`) was disassembled around
+`CCTextureAtlas::resizeCapacity(unsigned)` at `0x00b336d8`.
+
+### Confirmed callers
+
+A whole-text disassembly search found these direct call/tail-call sites:
+
+- `CCLabelAtlas::setString(char const*)` at `0x00ae1830` calls
+  `resizeCapacity` at `0x00ae188c` when the requested string length
+  exceeds the atlas capacity returned by the virtual capacity getter.
+- `CCParticleBatchNode::increaseAtlasCapacityTo(unsigned)` at
+  `0x00b024bc` loads its atlas pointer from `this+0x148` and tail-branches
+  directly to `resizeCapacity`.
+- `CCSpriteBatchNode::increaseAtlasCapacity(unsigned)` at
+  `0x00b176c8` compares the requested capacity with the current atlas
+  capacity and tail-branches to `resizeCapacity` only when growth is needed.
+- `CCSpriteBatchNode::increaseAtlasCapacity()` at `0x00b17718` computes a
+  larger capacity and delegates to the preceding helper.
+
+This means a hook on the central exported `resizeCapacity` symbol would
+observe these three client families (label atlas, particle batch, and sprite
+batch) without separately hooking each wrapper. It still would not cover
+other binaries, private copies, or runtime paths that bypass this exported
+implementation.
+
+### Exact resize behavior
+
+The target implementation compares the requested capacity with the current
+capacity at atlas offset `+0x50`. If equal, it returns true without changing
+storage. Otherwise it writes the new capacity and clamps the used-quad count
+at offset `+0x4c`, then reallocates the quad buffer at `+0x60` (96 bytes
+per quad) and the index buffer at `+0x38` (12 bytes per quad).
+
+On a successful allocation it rebuilds the index data through
+`setupIndices()`, remaps buffers through `mapBuffers()`, marks atlas dirty
+at `+0x48`, and returns true. When growing, the new quad/index regions are
+zero-initialized. On allocation failure, the implementation frees the
+remaining atlas allocations as applicable, clears their pointers, resets
+used-quad count and capacity to zero, and returns false. Thus **false does
+not mean the atlas remained unchanged**; it can mean the atlas was reset
+after allocation failure.
+
+The boolean return is therefore an operation-result signal, not a safe
+invalidation predicate. A future observer must conservatively invalidate
+slot and quad-derived state after every nontrivial resize attempt, including
+a failed one. A same-capacity no-op may be over-invalidated harmlessly unless
+the observer has a separately validated before/after capacity check.
+
+### Important correction to event semantics
+
+The current source wrappers for insert/remove/move operations call the
+original void-returning function and then pass `true` to
+`recordStructuralMutation`. They establish that the original call returned,
+not that the requested index/count changed the atlas. The current revision
+tracker is therefore a conservative mutation-attempt tracker for those
+void APIs, not a proof of successful state change. This over-invalidation is
+safe for correctness but may increment revisions on no-op or rejected
+requests. Documentation and telemetry must not describe these wrappers as
+independently verifying engine success.
+
+### Hook decision
+
+The central resize symbol is a better observation point than separate
+client-family hooks, but it remains intentionally unhooked in this pass.
+Before adding it, review Dobby trampoline coexistence, partial-install
+rollback, recursive entry behavior, and the exact bool ABI on the target
+ARM64 build. In particular, do not use the false return to skip invalidation:
+the failure path can clear the atlas storage itself. No cache may be enabled
+until resize events are observed reliably on-device.
