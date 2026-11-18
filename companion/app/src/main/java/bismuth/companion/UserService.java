@@ -130,14 +130,43 @@ public final class UserService extends IBismuthUserService.Stub {
         try {
             String raw = readText(path).trim();
             if (raw.isEmpty()) return -1;
-            // Accept only an unambiguous scalar percentage. Some Mali nodes print
-            // multiple counters on one line; treating the first counter as a
-            // percentage would silently publish a false GPU usage value.
+            // Accept only an unambiguous scalar percentage.
             String token = raw.endsWith("%") ? raw.substring(0, raw.length() - 1).trim() : raw;
             if (!token.matches("[0-9]+(?:\\\\.[0-9]+)?")) return -1;
             double value = Double.parseDouble(token);
             return (Double.isFinite(value) && value >= 0 && value <= 100) ? value : -1;
         } catch (Exception ignored) { return -1; }
+    }
+
+    // Qualcomm KGSL gpubusy reports two counters: busy time and elapsed time.
+    // Unlike cumulative devfreq counters, this node commonly reports one sample window.
+    private static double readGpuBusyPair(String path) {
+        try {
+            String raw = readText(path).trim();
+            String[] values = raw.split("\\\\s+");
+            if (values.length != 2) return -1;
+            double busy = Double.parseDouble(values[0]);
+            double total = Double.parseDouble(values[1]);
+            if (!Double.isFinite(busy) || !Double.isFinite(total) || busy < 0 || total <= 0 || busy > total) return -1;
+            return Math.max(0, Math.min(100, busy * 100.0 / total));
+        } catch (Exception ignored) { return -1; }
+    }
+
+    private static double kgslLoad() {
+        File root = new File("/sys/class/kgsl");
+        File[] devices = root.listFiles();
+        if (devices == null) return -1;
+        for (File device : devices) {
+            String name = device.getName().toLowerCase(Locale.ROOT);
+            if (!name.contains("kgsl") && !name.contains("3d")) continue;
+            for (String attr : new String[]{"gpu_busy_percentage", "gpu_busy", "utilization", "utilisation"}) {
+                double value = readGpuPercent(new File(device, attr).getPath());
+                if (value >= 0) return value;
+            }
+            double value = readGpuBusyPair(new File(device, "gpubusy").getPath());
+            if (value >= 0) return value;
+        }
+        return -1;
     }
 
     private static double gpuCounterLoad(File dir) {
@@ -166,6 +195,10 @@ public final class UserService extends IBismuthUserService.Stub {
     }
 
     private static double gpuLoad() {
+        // Qualcomm Adreno exposes utilization through KGSL on many Snapdragon kernels.
+        double kgsl = kgslLoad();
+        if (kgsl >= 0) return kgsl;
+
         // Common ARM Mali / MediaTek driver nodes. Availability and read permission
         // are kernel-specific; an unreadable or non-percentage value remains N/A.
         String[] direct = {
