@@ -27,6 +27,38 @@ void fail_instruction_relocation(void *, CodeMemBlock *, CodeMemBlock *) {
     // relocation failure before Dobby is allowed to patch the target.
 }
 
+void provide_relocated_code(void *, CodeMemBlock *, CodeMemBlock *relocated) {
+    static std::array<std::uint8_t, 32> storage{};
+    *relocated = CodeMemBlock(reinterpret_cast<addr_t>(storage.data()), storage.size());
+}
+
+void *fail_backup_allocation(std::size_t) {
+    return nullptr;
+}
+
+void run_backup_failure_case() {
+    std::array<std::uint8_t, 32> target{};
+    target.fill(0x90);
+    const auto original = target;
+
+    void *origin = reinterpret_cast<void *>(0x1);
+    dobby_test_generate_normal_trampoline = provide_test_trampoline;
+    dobby_test_relocate_code_and_branch = provide_relocated_code;
+    dobby_test_allocate_backup = fail_backup_allocation;
+
+    const int result = DobbyHook(target.data(),
+                                 reinterpret_cast<void *>(&replacement_function),
+                                 &origin);
+
+    assert(result != 0);
+    assert(origin == nullptr);
+    assert(target == original);
+
+    dobby_test_generate_normal_trampoline = nullptr;
+    dobby_test_relocate_code_and_branch = nullptr;
+    dobby_test_allocate_backup = nullptr;
+}
+
 void replacement_function() {
 }
 
@@ -99,7 +131,8 @@ void run_failure_case(bool fail_allocation) {
 int main() {
     run_failure_case(true);
     run_failure_case(false);
+    run_backup_failure_case();
     run_successful_hook_lifecycle();
-    std::puts("Dobby hook failure and install/destroy lifecycle tests passed");
+    std::puts("Dobby trampoline, relocation, backup, and lifecycle tests passed");
     return 0;
 }
