@@ -246,6 +246,15 @@ int main() {
     const AtlasRevision beforeUnknown = passive.revision();
     passive.invalidateUnknownMutation();
     assert(!passive.slotMappingCurrent(beforeUnknown));
+
+    // These revision-only paths model cache invalidation while telemetry
+    // counters are disabled; slot/content revisions must still advance.
+    const AtlasRevision beforeTelemetryOffQuad = passive.revision();
+    passive.invalidateQuadData();
+    assert(!passive.quadDataCurrent(beforeTelemetryOffQuad));
+    const AtlasRevision beforeTelemetryOffStructure = passive.revision();
+    passive.invalidateStructuralMutation();
+    assert(!passive.slotMappingCurrent(beforeTelemetryOffStructure));
     const AtlasRevision beforeDirtyUpload = passive.revision();
     passive.recordDirtyUpload(false, 10u);
     assert(passive.quadDataCurrent(beforeDirtyUpload));
