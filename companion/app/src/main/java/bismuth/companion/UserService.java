@@ -42,7 +42,7 @@ public final class UserService extends IBismuthUserService.Stub {
     private boolean isCurrentRun(int runId) {
         return running && generation == runId;
     }
-    @Override public String getStatus() { return status + "\\n\\n" + thermalDiagnostics(); }
+    @Override public String getStatus() { return status + "\n\n" + thermalDiagnostics() + "\n\n" + gpuDiagnostics(); }
 
     private void serve(int runId) {
         ServerSocket server = null;
@@ -315,6 +315,63 @@ public final class UserService extends IBismuthUserService.Stub {
         }
         return -1;
     }
+    private static String gpuDiagnostics() {
+        StringBuilder out = new StringBuilder("GPU diagnostics:");
+        String[] paths = {
+            "/sys/kernel/ged/hal/gpu_utilization",
+            "/sys/kernel/ged/hal/gpu_loading",
+            "/sys/kernel/ged/hal/gpu_busy",
+            "/sys/kernel/ged/hal/gpu_busy_percentage",
+            "/sys/kernel/debug/ged/hal/gpu_utilization",
+            "/sys/kernel/debug/ged/hal/gpu_loading",
+            "/sys/class/misc/mali0/device/utilisation",
+            "/sys/class/misc/mali0/device/utilization",
+            "/sys/class/misc/mali0/device/load",
+            "/sys/class/misc/mali0/device/gpu_busy",
+            "/sys/class/misc/mali0/device/gpu_utilization",
+            "/sys/class/misc/mali0/device/gpu_loading",
+            "/sys/devices/platform/mali/utilisation",
+            "/sys/devices/platform/mali/utilization",
+            "/sys/devices/platform/mali/gpu_utilization",
+            "/sys/devices/platform/mali/gpu_loading"
+        };
+        int found = 0;
+        for (String path : paths) {
+            File file = new File(path);
+            if (!file.exists()) {
+                out.append("\\n").append(path).append(" = missing");
+                continue;
+            }
+            found++;
+            try {
+                String raw = readText(path);
+                double percent = parseGpuPercent(raw);
+                out.append("\\n").append(path).append(" = ")
+                   .append(raw == null ? "empty" : raw.trim())
+                   .append(" [readable, percent=").append(percent).append("%]");
+            } catch (Exception e) {
+                out.append("\\n").append(path).append(" = exists, unreadable (")
+                   .append(e.getClass().getSimpleName()).append(")");
+            }
+        }
+        out.append("\\nExisting direct GPU nodes: ").append(found).append("/").append(paths.length);
+        File[] devfreq = new File("/sys/class/devfreq").listFiles();
+        if (devfreq == null) out.append("\\n/sys/class/devfreq = unavailable");
+        else {
+            out.append("\\nDevfreq nodes:");
+            for (File node : devfreq) {
+                String name = node.getName();
+                try {
+                    File nameFile = new File(node, "name");
+                    if (nameFile.isFile()) name += " (" + readText(nameFile.getPath()) + ")";
+                } catch (Exception ignored) {}
+                out.append(" ").append(name);
+            }
+        }
+        out.append("\\nDetected GPU utilization = ").append(gpuLoad()).append("%");
+        return out.toString();
+    }
+
     private static boolean isWantedThermalType(String type, String wanted) {
         String n = type.toLowerCase(Locale.ROOT);
         if ("cpu".equals(wanted)) return n.contains("cpu") || n.contains("mtktscpu");
