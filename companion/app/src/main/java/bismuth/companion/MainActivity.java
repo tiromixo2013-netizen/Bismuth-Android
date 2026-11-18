@@ -68,9 +68,6 @@ public final class MainActivity extends Activity {
         status.setTextSize(15);
         status.setPadding(0, 24, 0, 24);
         status.setTextIsSelectable(true);
-        ScrollView diagnosticsScroll = new ScrollView(this);
-        diagnosticsScroll.addView(status);
-        root.addView(diagnosticsScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         Button start = new Button(this);
         start.setText("Connect to Shizuku & start bridge");
         start.setOnClickListener(v -> requestAndStart());
@@ -79,6 +76,10 @@ public final class MainActivity extends Activity {
         stop.setText("Stop bridge");
         stop.setOnClickListener(v -> stopBridge());
         root.addView(stop);
+        ScrollView diagnosticsScroll = new ScrollView(this);
+        diagnosticsScroll.setFillViewport(false);
+        diagnosticsScroll.addView(status);
+        root.addView(diagnosticsScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         TextView note = new TextView(this);
         note.setText("Android 15 / Galaxy A05 target. The bridge listens only on 127.0.0.1:38471. GPU and thermal values may be unavailable if Samsung's kernel does not expose readable counters.");
         note.setPadding(0, 20, 0, 0);
