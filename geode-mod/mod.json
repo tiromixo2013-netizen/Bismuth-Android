@@ -7,7 +7,7 @@
   "name": "Bismuth Android",
   "version": "0.9.6",
   "developer": "Bismuth Project",
-  "description": "Android ARM64 performance monitor with a compact top-left HUD, scene-owned safe update controller, frame analysis, CPU, best-effort GPU, thermal and renderer telemetry.",
+  "description": "Android ARM64 performance monitor with a compact movable-corner HUD, scene-owned safe update controller, frame analysis, CPU, best-effort GPU, thermal and renderer telemetry.",
   "tags": [
     "performance",
     "utility"
@@ -22,8 +22,15 @@
     "hud-enabled": {
       "type": "bool",
       "name": "Live performance HUD",
-      "description": "Show a compact translucent top-left text overlay with FPS, device CPU/GPU load, system RAM, temperatures and optional frame percentiles.",
+      "description": "Show a compact translucent performance overlay.",
       "default": true
+    },
+    "hud-position": {
+      "type": "string",
+      "name": "HUD screen corner",
+      "description": "Choose which corner of the gameplay screen contains the live statistics. Changes apply within about one second.",
+      "default": "top-left",
+      "enum": ["top-left", "top-right", "bottom-left", "bottom-right"]
     },
     "hud-advanced": {
       "type": "bool",
